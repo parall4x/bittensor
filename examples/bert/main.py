@@ -11,15 +11,13 @@ from torch import nn
 import torch.nn.functional as F
 
 sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
-from transformer import TransformerModel
-from dataset import Dataset
+
 from loguru import logger
 
-
 import transformers
-from transformers import BertTokenizer, BertEmbeddings, BertEncoder
-
-from transformers import AutoTokenizer, AutoModel
+from datasets import load_dataset, list_metrics, load_metric
+from transformers import DataCollatorForLanguageModeling
+from transformers import BertTokenizer
 
 class TransformerSynapse(bittensor.Synapse):
     """ An bittensor endpoint trained on wiki corpus.
@@ -55,10 +53,6 @@ class TransformerSynapse(bittensor.Synapse):
         
         
     
-    
-    
-from transformers import BertModel, BertConfig
-
 def main(hparams):
     
     # Args
@@ -72,11 +66,20 @@ def main(hparams):
     data_path = "~/data/CoLA/"
     log_dir = 'data/' + trial_id + '/logs/'
     model_path = 'data/' + trial_id + '/model.torch'
+
+    # Dataset
+    dataset = load_dataset('wikitext', 'wikitext-103-raw-v1')
     
-    TEXT = transformer.data.processors.glue.ColaProcessor()
-    train_data = TEXT.get_train_data( data_dir )
-    test_data = TEXT.get_test_data( data_dir )
+    # Tokenizer
+    tokenizer = BertTokenizer.from_pretrained('bert-base-uncased')
     
+    # Data collator
+    data_collator = DataCollatorForLanguageModeling(
+        tokenizer=tokenizer, mlm=True, mlm_probability=0.15
+    )
+    
+    # dataloader
+    dataloader = torch.utils.data.DataLoader(dataset, batch_size=50, shuffle=True, num_workers=2, collate_fn=data_collator)
     
     # Build Synapse
     model = TransformerSynapse(config, bert, tokenizer)
