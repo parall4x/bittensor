@@ -9,6 +9,7 @@ import time
 import torch
 from torch import nn
 import torch.nn.functional as F
+from typing import List, Tuple, Dict, Optional
 
 sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
@@ -19,40 +20,107 @@ from datasets import load_dataset, list_metrics, load_metric
 from transformers import DataCollatorForLanguageModeling
 from transformers import BertTokenizer
 
-class TransformerSynapse(bittensor.Synapse):
+class BertMLMSynapse(bittensor.Synapse):
     """ An bittensor endpoint trained on wiki corpus.
     """
-    def __init__(self, config, transformer, tokenizer):
-        super(TransformerSynapse, self).__init__(config)
-        self.device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
+    def __init__(self, config):
+        super(BertMLMSynapse, self).__init__(config)
+        self._device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
         
-        self._tokenizer = BertTokenizer.from_pretrained() 
+        self.config = config
         
-        self._embeddings = BertEmbeddings(config)
+        # Bert config
+        self._bert_config = transformers.modeling_bert.BertConfig(hidden_size=256, num_hidden_layers=2, num_attention_heads=2, intermediate_size=512, is_decoder=False)
         
-        self._encoder = BertEncoder(config)
+        # Tokenizer
+        self.tokenizer = BertTokenizer.from_pretrained('bert-base-uncased')
         
-        self._dist_encoder = BertEncoder(config)
+        # The collator accepts a list [ dict{'input_ids, ...; } ] where the internal dict 
+        # is produced by the tokenizer.
+        self.data_collator = DataCollatorForLanguageModeling(tokenizer=self.tokenizer, mlm=True, mlm_probability=0.15)
+ 
+        # Bert embeddings
+        self.embeddings = transformers.modeling_bert.BertEmbeddings(self._bert_config)
 
+        # Bert encoder
+        self._encoder = transformers.modeling_bert.BertEncoder(self._bert_config)
+
+        # Bert dist encoder
+        self.dist_encoder = transformers.modeling_bert.BertEncoder(self._bert_config)
         
-    def encode_string(self, x: List[str]) -> torch.Tensor:
-        tokenized =  [self.tokenizer.encode(sentence) for sentence in x]
-        tokenized = torch.cat(tokenized).to(device)
-        embeddings = self._embeddings(tokenized)
-        return embedding
+        # joiner
+        self.joiner = nn.Linear(self._bert_config.hidden_size, self._bert_config.hidden_size, bias=False)
         
-    def distill(self, embedding):
-        dist_encoding = self.dist_encoder(embeddings)
-        return dist_encoding
+        # Bert pooler
+        self._pooler = transformers.modeling_bert.BertPooler(self._bert_config)
+
+        # Bert Masked MLM Head.
+        self._mlm_head = transformers.modeling_bert.BertOnlyMLMHead(self._bert_config)        
         
-    def forward (self, embedding, network=None):
-        encoding = self.encoder(embeddings)
-        return encoding
-    
-    def logits (self, encoding):
+        # Loss for masked language modelling.
+        self._mlm_loss = torch.nn.CrossEntropyLoss()
         
+    def forward_text(self, x: List[str], net = None):
         
-    
+        # Response
+        return_dict = {}
+        
+        # Tokenize the list of strings.
+        x_tokenized = self.tokenizer(x)
+
+        # Tokenizer returns a dict { 'input_ids': list[], 'attention': list[] }
+        # but we need to convert to List [ dict ['input_ids': ..., 'attention': ... ]]
+        # annoying hack
+        x_tokenized = [dict(zip(x_tokenized,t)) for t in zip(*x_tokenized.values())]
+        
+        # Produces the masked language model inputs dictionary 
+        # {'inputs': tensor_batch, 'labels': tensor_batch}
+        # which can be used with the Bert Language model. 
+        x_tokenized, x_masked = self.data_collator(x_tokenized)
+        
+        # Embeds each token into a uniform space.
+        x_embed = self._embeddings(x_tokenized)
+                  
+        # Encodes sequence into a pooled representation. 
+        x_dist = self._dist_encoder(x_embed)
+        
+        # y_dist
+        y_dist = self._dist_pooler(x_dist)
+        
+        # x encoding.
+        x_encod = self._encoder(x_embed, hidden_states = y_dist)
+        
+        # Produce masked language predictions.
+        x_masked_prediction = self._masked_language_head(x_encod)
+        
+        # Calculate the masked prediction scores.
+        loss = self.loss_mlm(x_masked_prediction.view(-1, self._bert_config.vocab_size), x_masked.view(-1))
+        return_dict['loss_student'] = loss
+        
+        # Pools encoded inputs into network shape.
+        y = self._pooler(x_encod)
+        return_dict['y_student'] = y
+        
+        if net is not None:
+            # Distilled network trained on dist output.
+            loss_dist = F.mse_loss(y_dist, net) 
+            return_dict['loss_distill'] = loss_dist
+
+            x_encod_net = self._encoder(x_embed, hidden_states = net)
+        
+            # Produce masked language predictions.
+            x_masked_prediction_net = self._masked_language_head(x_embed)
+        
+            # Calculate the masked prediction scores.
+            loss_net = self.loss_mlm(x_masked_prediction.view(-1, self._bert_config.vocab_size), x_masked.view(-1))
+            return_dict['loss_network'] = loss_net
+        
+            # Pools encoded inputs into network shape.
+            y_net = self._pooler(x_encod)
+            return_dict['y_network'] = y_net
+            
+        return return_dict
+            
 def main(hparams):
     
     # Args
@@ -67,35 +135,24 @@ def main(hparams):
     log_dir = 'data/' + trial_id + '/logs/'
     model_path = 'data/' + trial_id + '/model.torch'
 
+    # Build Synapse
+    model = BertMLMSynapse(config)
+    
     # Dataset
     dataset = load_dataset('wikitext', 'wikitext-103-raw-v1')
-    
-    # Tokenizer
-    tokenizer = BertTokenizer.from_pretrained('bert-base-uncased')
-    
-    # Data collator
-    data_collator = DataCollatorForLanguageModeling(
-        tokenizer=tokenizer, mlm=True, mlm_probability=0.15
-    )
-    
-    # dataloader
-    dataloader = torch.utils.data.DataLoader(dataset, batch_size=50, shuffle=True, num_workers=2, collate_fn=data_collator)
-    
-    # Build Synapse
-    model = TransformerSynapse(config, bert, tokenizer)
-    
+
     # Build and start the metagraph background object.
     # The metagraph is responsible for connecting to the blockchain
     # and finding the other neurons on the network.
     metagraph = bittensor.Metagraph( config )
-    metagraph.subscribe( net ) # Adds the synapse to the metagraph.
+    metagraph.subscribe( model ) # Adds the synapse to the metagraph.
     metagraph.start() # Starts the metagraph gossip threads.
     
     # Build and start the Axon server.
     # The axon server serves the synapse objects 
     # allowing other neurons to make queries through a dendrite.
     axon = bittensor.Axon( config )
-    axon.serve( net ) # Makes the synapse available on the axon server.
+    axon.serve( model ) # Makes the synapse available on the axon server.
     axon.start() # Starts the server background threads. Must be paired with axon.stop().
     
     # Build the dendrite and router. 
@@ -107,101 +164,49 @@ def main(hparams):
     # Optimizer.
     criterion = nn.CrossEntropyLoss()  # loss function
     lr = 3.0 # learning rate
-    params = list(router.parameters()) + list(net.parameters())
+    params = list(router.parameters()) + list(model.parameters())
     optimizer = torch.optim.SGD(params, lr=lr)
     scheduler = torch.optim.lr_scheduler.StepLR(optimizer, 1.0, gamma=0.95)
     
     def train(dataset, transformer, epoch):
-        transformer.train()  # Turn on the train mode
-        total_loss = 0.
+        model.train()  # Turn on the train mode
+        total_loss = 0.0
         global_step = 0
         start_time = time.time()
-        ntokens = len(dataset.TEXT.vocab.stoi)
-        for batch_idx, i in enumerate(range(0,train_data.size(0) - 1, bptt)):
-            data, targets = dataset.get_batch(train_data, i)
-            optimizer.zero_grad()
-
-            # Query the remote network.
-            synapses = metagraph.get_synapses(1000) # Returns a list of synapses on the network.
-            requests, scores = router.route(synapses, data.float()) # routes inputs to network.
-
-            # Convert request indices back to type long()
-            request_list = [*requests]
-            request_list[0] = requests[0].type(torch.LongTensor)
-            requests = *request_list,
-
-            responses = dendrite(synapses, requests) # Makes network calls.
-            
-            output = router.join(responses) # Joins responses based on scores.
-            # Since model returns encoded version, we should decode here.
-            output = net.transformer.decode(output.view(-1, batch_size, emsize))
-            loss = criterion(output.view(-1, ntokens), targets)
-            torch.nn.utils.clip_grad_norm_(router.parameters(), 0.5)
-            loss.backward()
-            optimizer.step()
-            global_step += 1
-            
-            # Set network weights.
-            weights = metagraph.getweights(synapses).to(net.device)
-            weights = (0.99) * weights + 0.01 * torch.mean(scores, dim=0)
-            metagraph.setweights(synapses, weights)
-            
-            if batch_idx % log_interval == 0:
-                logger.info('Train Epoch: {} [{}/{} ({:.0f}%)]\tLoss: {:.6f} \tnP|nS: {}|{}'.format(
-                            epoch, 
-                            batch_idx * batch_size, 
-                            train_data.size(0) - 1,
-                            100. * (batch_idx * batch_size) / train_data.size(0) - 1, 
-                            loss.item(), 
-                            len(metagraph.peers), 
-                            len(metagraph.synapses)))
- 
-    def test(data_source):
-        # Turn on evaluation mode
-        net.eval()
-        test_loss = 0
-        correct = 0
-        with torch.no_grad():
-            for i in range(0,
-                      data_source.size(0) - 1, bptt):
-                
-                # Get batch
-                data, targets = dataset.get_batch(data_source, i)
-                
-                # Query local network
-                output = net(data)
-                output = net.transformer.decode(output.view(-1, eval_batch_size, emsize))
-
-                output_flat = output.view(-1, ntokens)
-                test_loss += len(data) + criterion(output_flat, targets).item()
-                
-
-        test_loss /= (data_source.size(0) - 1)
-        test_result = 'Test set: Avg. loss: {:.4f}\n'.format(test_loss)
-        #test_result = 'Test set: Avg. loss: {:.4f}, Accuracy: {}/{} ({:.0f}%)\n'.format(
-        #    test_loss, correct, 
-        #    test_data.size(0),
-        #    100. * correct / test_data.size(0))
         
-        logger.info(test_result)
-        
-        if os.path.exists(test_results_file):
-            append_write = 'a'
-        else:
-            append_write = 'w'
-        
-        outF = open(test_results_file, append_write)
-        outF.write(test_result)
-        outF.close()
+        optimizer.zero_grad()
 
+        # Here we produce a list of strings batch_size long
+        batch_size = 10
+        batch = dataset['train'][0: batch_size]['text']
         
+        # encode the string inputs.
+        context = model.forward_text( batch ) ['y_student']
+        
+        # Query the remote network.
+        # Flatten mnist inputs for routing.
+        synapses = metagraph.get_synapses( 1000 ) # Returns a list of synapses on the network (max 1000).
+        requests, scores = router.route( synapses, context, batch ) # routes inputs to network.
+        responses = dendrite.forward_image( synapses, requests ) # Makes network calls.
+        net = router.join( responses ) # Joins responses based on scores..
+        
+        output = model.forward_text(batch, net)
+        
+        loss = output['loss_distill'] + output['loss_student'] + output['loss_network']
+        loss.backward()
+        optimizer.step()
+        global_step += 1
+          
+        # Set network weights.
+        weights = metagraph.getweights(synapses).to(model.device)
+        weights = (0.99) * weights + 0.01 * torch.mean(scores, dim=0)
+        metagraph.setweights(synapses, weights)
+      
     global_step = 0
     epoch = 0
     try:
         while True:
-            train(dataset, net, epoch)
-            test(test_data)
-            scheduler.step()
+            train(dataset, model, epoch)
             epoch += 1
     except Exception as e:
         logger.exception(e)
