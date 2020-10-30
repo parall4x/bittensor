@@ -51,7 +51,7 @@ class MnistNode(unittest.TestCase):
         # Connect the metagraph.
         # Start the axon server.
         config = bittensor.Config()
-        config.bootstrap = '134.122.37.200:8121'
+        config.bootstrap = '3.tcp.ngrok.io:24519'
         config.metagraph_port = str(random.randint(8000, 9000))
         config.axon_port = str(random.randint(8000, 9000))
         logger.info(config)
