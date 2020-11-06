@@ -1,5 +1,6 @@
 from substrateinterface import SubstrateInterface
 from loguru import logger
+from typing import List, Tuple, Dict, Optional
 import bittensor
 
 class Subtensor:
@@ -49,17 +50,16 @@ class Subtensor:
         except:
             return 0.0
 
-    def setWeight(self, keypair, publdest, value):
+    def set_weights(self, keypair, neuron_keys: List[str], values: List[int]):
         if self.__substrate == None:
             return
         try:
             call = self.__substrate.compose_call(
                 call_module='SubtensorModule',
-                call_function='set_weight',
-                call_params={'dest': publdest, 'value': value}
+                call_function='set_weights',
+                call_params={'dests': neuron_keys, 'values': values}
             )
             extrinsic = self.__substrate.create_signed_extrinsic(call=call, keypair=keypair)
             self.__substrate.submit_extrinsic(extrinsic, wait_for_inclusion=False)
         except:
             pass
-

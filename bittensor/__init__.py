@@ -6,6 +6,7 @@ import time
 from torch import nn
 from torch.utils.tensorboard import SummaryWriter
 from transformers import GPT2Tokenizer
+from typing import List, Tuple, Dict, Optional
 
 import argparse
 
@@ -106,6 +107,18 @@ def balance():
         logger.error("INIT: bittensor is not initialized. Call bittensor.init() before calling bittensor.balance().")
         quit(-1)
     return subtensor.get_balance(keypair)
+
+def set_weights(synapses: List[bittensor.Synapse], values: List[float]):
+    if subtensor == None or keypair == None:
+        logger.error("INIT: bittensor is not initialized. Call bittensor.init() before calling bittensor.balance().")
+        quit(-1)        
+    dests = []
+    for syn in synapses:
+        dests.append(syn.neuron_key)
+    int_vals = []
+    for val in values:
+        int_vals.append(int(val * 100))
+    return subtensor.set_weights(keypair, dests, int_vals)
 
 def log_output(step, output):
     bittensor.tbwriter.add_scalar('remote target loss', output.remote_target_loss.item(), step)
