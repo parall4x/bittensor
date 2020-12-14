@@ -139,6 +139,16 @@ class Session:
         except Exception as e:
             logger.error('SESSION: Error while unsubscribing to the chain endpoint: {}', e)
 
+<<<<<<< HEAD
+=======
+        logger.info('Stopping axon server..')
+        try:
+            self.axon.stop()
+        except Exception as e:
+            logger.error('SESSION: Error while stopping axon server: {} ', e)
+
+
+>>>>>>> 25e9601080a9dfa59720772f7457a828e74e0ebc
     def subscribe (self):
        self.metagraph.subscribe()
 
