@@ -3,7 +3,7 @@ from bittensor.subtensor.interface import Keypair
 from loguru import logger
 import pytest
 
-logger.remove() # Shut up loguru
+# logger.remove() # Shut up loguru
 
 
 

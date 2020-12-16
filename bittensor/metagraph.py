@@ -408,6 +408,9 @@ class Metagraph():
         # Convert weights to integer represenation and get corresponding keys.
         keys, vals = self._convert_weights(weights)
 
+        logger.info("keys: {}", keys)
+        logger.info("vals: {}", vals)
+
         # Remove unchanged vals.
         keys, vals = await self._remove_noop(keys, vals)
         if len(keys) == 0:
@@ -423,8 +426,8 @@ class Metagraph():
             return False
 
         # Checks that weight emission was included in a block after 12 seconds.
-        if not await self._wait_for_emit_inclusion(keys, vals, timeout = 12):
-            logger.error('Weight failed with non-inclusion after 12 seconds.')
+        if not await self._wait_for_emit_inclusion(keys, vals, timeout = 60):
+            logger.error('Weight failed with non-inclusion after 60 seconds.')
             return False
         return True
 

@@ -132,6 +132,8 @@ class WSClient:
             params=[pubkey]
         )
 
+        logger.info("pubkey: {} : result {}", pubkey, result['result'])
+
         return result['result']
 
 
