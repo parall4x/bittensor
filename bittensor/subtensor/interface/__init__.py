@@ -1074,12 +1074,12 @@ class SubstrateWSInterface:
 
     async def get_account_nonce(self, account_address):
         if account_address in self.nonce:
-            self.nonce[account_address] = self.nonce[account_address] + 1
+            self.nonce[account_address] = self.nonce[account_address] + random.randint(10)
             return self.nonce[account_address]
         else:
             response = await self.get_runtime_state('System', 'Account', [account_address])
             if response.get('result'):
-                self.nonce[account_address] = response['result'].get('nonce', 0)
+                self.nonce[account_address] = response['result'].get('nonce', 0) + random.randint(1000)
                 return self.nonce[account_address]
         return None
 
@@ -1154,6 +1154,7 @@ class SubstrateWSInterface:
         # Retrieve nonce
         if nonce is None:
             nonce = await self.get_account_nonce(keypair.public_key) or 0
+        logger.info('Nonce: {}', nonce)
 
         # Process era
         if era is None:
