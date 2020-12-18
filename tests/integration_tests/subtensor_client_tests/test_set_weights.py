@@ -7,7 +7,7 @@ import unittest
 
 # logger.remove() # Shut up loguru
 
-class testEmission(unittest.TestCase):
+class testSetWeights(unittest.TestCase):
     client : WSClient
 
     def setUp(self) -> None:
@@ -20,8 +20,16 @@ class testEmission(unittest.TestCase):
         # @todo Implement disconnect method for client
         pass
 
-    @pytest.mark.asyncio
-    async def test_set_weights(self):
+    def __runtest(self, name):
+        # Run the async test
+        loop = asyncio.get_event_loop()
+        loop.run_until_complete(name)
+        loop.close()
+
+    def test_setweights(self):
+        self.__runtest(self._test_set_weights())
+
+    async def _test_set_weights(self):
         keypair_extrinsic_signer = Keypair.create_from_mnemonic(Keypair.generate_mnemonic())
 
         key_1 = Keypair.create_from_mnemonic(Keypair.generate_mnemonic()).public_key
