@@ -43,6 +43,8 @@ class testSetWeights(unittest.TestCase):
 
         await self.client.is_connected()
         await self.client.set_weights(keys, vals, keypair_extrinsic_signer, wait_for_inclusion=False)
+        await asyncio.sleep(6)
+        await self.client.set_weights(keys, vals, keypair_extrinsic_signer, wait_for_inclusion=False)
 
         await asyncio.sleep(6)
 
