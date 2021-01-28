@@ -24,13 +24,13 @@ protobuf==3.13.0
 pycryptodome==3.9.8
 pycrypto==2.6.1
 py-sr25519-bindings==0.1.2
-py-ed25519-bindings==0.1.1
+# py-ed25519-bindings==0.1.1
 py-bip39-bindings>=0.1.6
-pytest-asyncio
 pytest>=6.1.2
 pytest-xdist==2.2.0
 pytest-asyncio>=0.14.0
 pytorch_transformers
+ed25519
 pyyaml
 rollbar
 scalecodec==0.10.30
