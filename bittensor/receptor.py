@@ -1,25 +1,23 @@
-'''
-The MIT License (MIT)
-Copyright © 2021 Opentensor.ai
+# The MIT License (MIT)
+# Copyright © 2021 Opentensor.ai
 
-Permission is hereby granted, free of charge, to any person obtaining a copy of this software and associated 
-documentation files (the “Software”), to deal in the Software without restriction, including without limitation 
-the rights to use, copy, modify, merge, publish, distribute, sublicense, and/or sell copies of the Software, 
-and to permit persons to whom the Software is furnished to do so, subject to the following conditions:
+# Permission is hereby granted, free of charge, to any person obtaining a copy of this software and associated 
+# documentation files (the “Software”), to deal in the Software without restriction, including without limitation 
+# the rights to use, copy, modify, merge, publish, distribute, sublicense, and/or sell copies of the Software, 
+# and to permit persons to whom the Software is furnished to do so, subject to the following conditions:
 
-The above copyright notice and this permission notice shall be included in all copies or substantial portions of 
-the Software.
+# The above copyright notice and this permission notice shall be included in all copies or substantial portions of 
+# the Software.
 
-THE SOFTWARE IS PROVIDED “AS IS”, WITHOUT WARRANTY OF ANY KIND, EXPRESS OR IMPLIED, INCLUDING BUT NOT LIMITED TO
-THE WARRANTIES OF MERCHANTABILITY, FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL 
-THE AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER LIABILITY, WHETHER IN AN ACTION 
-OF CONTRACT, TORT OR OTHERWISE, ARISING FROM, OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER 
-DEALINGS IN THE SOFTWARE.
-'''
+# THE SOFTWARE IS PROVIDED “AS IS”, WITHOUT WARRANTY OF ANY KIND, EXPRESS OR IMPLIED, INCLUDING BUT NOT LIMITED TO
+# THE WARRANTIES OF MERCHANTABILITY, FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL 
+# THE AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER LIABILITY, WHETHER IN AN ACTION 
+# OF CONTRACT, TORT OR OTHERWISE, ARISING FROM, OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER 
+# DEALINGS IN THE SOFTWARE.
+
 import argparse
 import grpc
 import sys
-import os
 import time
 import torch
 import torch.nn as nn
@@ -30,10 +28,9 @@ from loguru import logger
 from munch import Munch
 from types import SimpleNamespace
 from torch.autograd.function import once_differentiable
-from typing import Tuple, List, Optional
+from typing import Tuple, Optional
 
 import bittensor
-import bittensor.utils.networking as net
 import bittensor.utils.stats as stat_utils
 import bittensor.serialization as serialization
 from bittensor.exceptions.handlers import rollbar
@@ -53,13 +50,13 @@ class Receptor(nn.Module):
 
     def __init__(self, neuron: bittensor.proto.Neuron, config: Munch = None, wallet: 'bittensor.wallet.Wallet' = None):
         r""" Initializes a receptor grpc connection.
-            Args:
-                neuron (:obj:`bittensor.proto.Neuron`, `required`):
-                    neuron endpoint descriptor proto.
-                config (:obj:`Munch`, `optional`): 
-                    receptor.Receptor.config()
-                wallet (:obj:`bittensor.wallet.Wallet`, `optional`):
-                    bittensor wallet with hotkey and coldkeypub.
+                Args:
+                    neuron (:obj:`bittensor.proto.Neuron`, `required`):
+                        neuron endpoint descriptor proto.
+                    config (:obj:`Munch`, `optional`): 
+                        receptor.Receptor.config()
+                    wallet (:obj:`bittensor.wallet.Wallet`, `optional`):
+                        bittensor wallet with hotkey and coldkeypub.
         """
         super().__init__()
         if config == None:

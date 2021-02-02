@@ -55,6 +55,24 @@ class ChainState():
         self.pubkey_for_index = {}
 
     def add_or_update(self, pubkey:str, ip: int, port: int, uid: int, ip_type: int, modality: int, lastemit: int, stake: int, w_uids: List[int], w_vals: List[int]):
+        """ Adds a new neuron endpoint into the list of peers that the neuron can communicate with, 
+        or updates an existing one with new information.
+
+        Args:
+            pubkey (:obj:`str`): Public key of the neuron endpoint
+            ip (:obj:`int`): IP address of the neuron endpoint.
+            port (:obj:`int`): Port of the neuron endpoint.
+            uid (:obj:`int`): unique identifier for the neuron endpoint.
+            ip_type (:obj:`int`): Type of the IP address (integer) i.e. v6, or v4.
+            modality (:obj:`int`): Modality of the data the neuron is communicating with. 
+            lastemit (:obj:`int`): Last emit time.
+            stake (:obj:`int`): Stake the neuron has in the network.
+            w_uids (:obj:`List[int]`): Node endpoint's weight matrix neuron UIDs. 
+            w_vals (:obj:`List[int]`): Node endpoint's Weight matrix values.
+
+        Raises:
+            :obj:`ValueError`: ValueError in case UID does not match up with public key. 
+        """
         address_str = net.int_to_ip(ip)
         neuron = bittensor.proto.Neuron(
             version = bittensor.__version__,
@@ -75,7 +93,7 @@ class ChainState():
                 self.weight_vals[index] = list(w_vals)
                 self.uids[index] = int(uid)
             else:
-                raise ValueError('recieved inconsistent uid - pubey pairing with uid{}, pubkey{} and expected uid {}'.format(uid, pubkey, self.uids[index]))
+                raise ValueError('received inconsistent uid - pubkey pairing with uid{}, pubkey{} and expected uid {}'.format(uid, pubkey, self.uids[index]))
         else:
             index = self.n
             self.n += 1
@@ -137,7 +155,13 @@ class TorchChainState():
 
     @staticmethod
     def from_cache(cache: ChainState):
-        r""" Deep copies from the chain state.
+        """ Deep copies chain state into metagraph state.
+
+        Args:
+            cache (:obj:`ChainState`): Cached `ChainState` object.
+            
+        Returns:
+            :obj:`TorchChainState`: Chain state as a torch object.
         """
         # Deep copies chain state into metagraph state.
         state = TorchChainState()
@@ -561,7 +585,7 @@ class Metagraph():
         loop.run_until_complete(self.async_sync())
 
     async def async_sync(self):
-        r""" Async: Synchronizes the local self.state with the chain state by polling the chain.
+        r""" Synchronizes the local self.state with the chain state by polling the chain asynchronously.
         """
         await self._sync_cache()
         last_sync = await self.async_chain_block()
@@ -585,7 +609,11 @@ class Metagraph():
         await asyncio.gather(*calls)
 
     async def _poll_uid(self, pubkey: str, uid:int):
-        r""" Polls info info for a specfic public key.
+        """ Polls info info for a specfic public key. Calls `ChainState.add_or_update`.
+
+        Args:
+            pubkey (obj:`str`): Public key of neuron endpoint.
+            uid (obj:`int`): Unique identifier of neuron endpoint.
         """
         try:
             stake = await self.subtensor_client.get_stake_for_uid( uid )
@@ -595,20 +623,20 @@ class Metagraph():
             neuron = await self.subtensor_client.get_neuron_for_uid ( uid )
             self.cache.add_or_update(pubkey = pubkey, ip = neuron['ip'], port = neuron['port'], uid = neuron['uid'], ip_type = neuron['ip_type'], modality = neuron['modality'], lastemit = lastemit, stake = stake.rao, w_uids = w_uids, w_vals = w_vals)
         except Exception as e:
-            pass
-            #logger.error("Exception occurred: {}".format(e))
-            #traceback.print_exc()
+            logger.warning("Exception occurred: {}".format(e))
+            traceback.print_exc()
 
     ConnectSuccess = 1
     ConnectUnknownError = 2
     ConnectTimeout = 3
     def connect(self, timeout:int) -> Tuple[int, str]:
         r""" Synchronous: Connects to the chain.
-        Args:
-            timeout (int):
-                Time to wait before connecting times out.
-        Returns:
-            see: _try_async_connect
+        
+                Args:
+                    timeout (:obj`int`):
+                        Time to wait before connecting times out.
+                Returns:
+                    see: _try_async_connect
         """
         loop = asyncio.get_event_loop()
         loop.set_debug(enabled=True)

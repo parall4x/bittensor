@@ -118,9 +118,9 @@ class Nucleus ():
                 Returns:
                     outputs (:obj:`torch.FloatTensor`, `required`): 
                         response from the synapse.call_forward call or None in the case of errors.
-                    message: (str, `required`): 
+                    message (str, `required`): 
                         message associated with forward call, potentially error, or 'success'.
-                    code: (:obj:`bittensor.proto.ReturnCode, `required`)
+                    code (:obj:`bittensor.proto.ReturnCode, `required`)
                         return code associated with forward call i.e. Success of Timeout.
 
         """
@@ -174,9 +174,9 @@ class Nucleus ():
                 Returns:
                     outputs (:obj:`torch.FloatTensor`, `required`): 
                         response from the synapse.call_backward call (i.e. inputs_dx) or None in the case of errors.
-                    message: (str, `required`): 
+                    message (str, `required`): 
                         message associated with forward call, potentially error, or 'success'.
-                    code: (:obj:`bittensor.proto.ReturnCode, `required`)
+                    code (:obj:`bittensor.proto.ReturnCode, `required`)
                         return code associated with forward call i.e. Success of Timeout.
 
         """
@@ -206,9 +206,9 @@ class Nucleus ():
                 Returns:
                     outputs (:obj:`torch.FloatTensor`, `required`): 
                         response from the synapse.call_backward call (i.e. inputs_dx) or None in the case of errors.
-                    message: (str, `required`): 
+                    message (str, `required`): 
                         message associated with forward call, potentially error, or 'success'.
-                    code: (:obj:`bittensor.proto.ReturnCode, `required`)
+                    code (:obj:`bittensor.proto.ReturnCode, `required`)
                         return code associated with forward call i.e. Success of Timeout.
 
         """
@@ -241,9 +241,9 @@ class Nucleus ():
             Returns:
                 outputs (:obj:`torch.FloatTensor`, `required`): 
                     response from the synapse.call_backward call (i.e. inputs_dx) or None in the case of errors.
-                message: (str, `required`): 
+                message (str, `required`): 
                     message associated with forward call, potentially error, or 'success'.
-                code: (:obj:`bittensor.proto.ReturnCode, `required`)
+                code (:obj:`bittensor.proto.ReturnCode, `required`)
                     return code associated with forward call i.e. Success of Timeout.
         """
        
