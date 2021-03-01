@@ -57,7 +57,7 @@ class Miner():
 
         # ---- Dataset ----
         # Dataset: 74 million sentences pulled from books.
-        self.dataset = load_dataset('wikicorpus')['train']
+        self.dataset = load_dataset('wikicorpus', 'raw_en')['train']
 
         self.device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 
