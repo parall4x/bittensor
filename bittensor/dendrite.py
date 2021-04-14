@@ -29,6 +29,7 @@ import traceback
 from termcolor import colored
 from types import SimpleNamespace
 from typing import Tuple, List, Optional
+from torch.autograd.function import once_differentiable
 from loguru import logger
 from munch import Munch
 
@@ -37,45 +38,65 @@ import bittensor.utils.stats as stat_utils
 import bittensor.serialization as serialization
 from bittensor.exceptions.handlers import rollbar
 
-class Dendrite(nn.Module):
-    r"""
-        Creates Forward and Backward calls to other neurons on the network. It behaves like a normal torch nn.Module and is differentiable. 
-    
-        Messages passed through this module will be sent to other neuron objects, either remote or local, and return responses as torch tensors. 
-        Gradients passing through this module on a .backward() call will trigger Backward rpc calls to the axon terminals of the downstream neurons 
-        called during associated Forward operation.
-    """
+import multiprocessing.managers
+from multiprocessing.managers import BaseManager
 
-    def __init__(self, config: Munch = None, wallet: 'bittensor.wallet.Wallet' = None, **kwargs):
-        r""" Initializes a new Dendrite entry point.
+
+# dummy tensor that triggers autograd 
+DUMMY = torch.empty(0, requires_grad=True)
+
+class Dendrite(torch.autograd.Function):
+
+    def __init__(
+            self, 
+            config: 'Munch' = None, 
+            wallet: 'bittensor.wallet.Wallet' = None,
+            receptor_pass_gradients: bool = None,
+            receptor_timeout: float = None,
+            receptor_do_backoff: bool = None, 
+            receptor_max_backoff: int = None
+        ):
+        r""" Initializes a receptor grpc connection.
             Args:
                 config (:obj:`Munch`, `optional`): 
-                    dendrite.Dendrite.config()
+                    receptor.Receptor.config()
                 wallet (:obj:`bittensor.wallet.Wallet`, `optional`):
                     bittensor wallet with hotkey and coldkeypub.
+                receptor_pass_gradients (default=True, type=bool)
+                    Switch to true if the neuron passes gradients to downstream peers.
+                        By default the backward call i.e. loss.backward() triggers passing gradients on the wire.
+                receptor_timeout (default=0.5, type=float):
+                    The per request RPC timeout. a.k.a the maximum request time.
+                receptor_do_backoff (default=True, type=bool)
+                    Neurons who return non successful return codes are
+                        periodically not called with a multiplicative backoff.
+                        The backoff doubles until max_backoff and then halves on ever sequential successful request.
+                receptor_max_backoff (default=100, type=int)
+                    The backoff doubles until this saturation point.
         """
         super().__init__()
-        # Config: Holds all config items for this items and those that are recursively defined. Specifically
-        # config for your wallet.
         if config == None:
             config = Dendrite.default_config()
-        Dendrite.check_config( config )
+        config.receptor.timeout = receptor_timeout if receptor_timeout != None else config.receptor.timeout
+        config.receptor.max_backoff = receptor_max_backoff if receptor_max_backoff != None else config.receptor.max_backoff
+        config.receptor.do_backoff = receptor_do_backoff if receptor_do_backoff != None else config.receptor.do_backoff
+        config.receptor.pass_gradients = receptor_pass_gradients if receptor_pass_gradients != None else config.receptor.pass_gradients
+        _Dendrite.check_config(config)
         self.config = config
 
-        # Wallet: Holds you hotkey keypair and coldkey pub, which can be used to sign messages 
-        # and subscribe to the chain.
         if wallet == None:
-            wallet = bittensor.wallet.Wallet(self.config)
+            wallet = bittensor.wallet.Wallet( self.config )
+        self.config.wallet = wallet.config.wallet
         self.wallet = wallet
 
-        # Receptors: Holds a set map of publickey -> receptor objects. Receptors encapsulate a TCP connection between
-        # this dendrite and an upstream neuron (i.e. a peer we call for representations)
-        self._receptors = {}
-
-        # Stats: hold statistics for this dendrite.
-        self.stats = SimpleNamespace(
-            qps = stat_utils.timed_rolling_avg(0.0, 0.01),
-        )
+        # Create shared memory Dendrite.
+        if self.config.dendrite.multiprocess == True:
+            BaseManager.register( '_Dendrite', bittensor.dendrite._Dendrite )
+            self._manager = BaseManager()
+            self._manager.start()
+            self._dendrite = self._manager._Dendrite( config = self.config, wallet = self.wallet )
+        else:
+            self._dendrite = _Dendrite( config = self.config, wallet = self.wallet )
 
     @staticmethod   
     def default_config() -> Munch:
@@ -90,106 +111,353 @@ class Dendrite(nn.Module):
 
     @staticmethod   
     def add_args(parser: argparse.ArgumentParser):
-        bittensor.receptor.Receptor.add_args(parser)
-        return parser
+        bittensor.wallet.Wallet.add_args( parser )
+        _Dendrite.add_args( parser )
 
-    def forward_text(self, neurons: List[bittensor.proto.Neuron],
-                     x: List[torch.Tensor]) -> Tuple[List[torch.Tensor], torch.Tensor]:
-        r""" Forward text inputs to neurons.
+        parser.add_argument('--dendrite.multiprocess', default=True, type=bool, 
+            help='''If true, the dendrite is created in shared memory and accessible from multiple processes. ''')
+
+    def __str__(self) -> str:
+        return self._dendrite.toString()
+    
+    def __full_str__(self) -> str:
+        return self._dendrite.fullToString()
+
+    def toString(self) -> str:
+        return self._dendrite.toString()
+
+    def fullToString(self) -> str:
+        return self._dendrite.fullToString()
+
+    def getReceptors(self) -> List['bittensor.receptor.Receptor']:
+        return self._dendrite.getReceptors()
+    
+    @staticmethod
+    def forward(
+            ctx, 
+            dendrite: 'bittensor.dendrite.Dendrite',
+            dummy: torch.Tensor, 
+            neurons: List[bittensor.proto.Neuron], 
+            modality: bittensor.proto.Modality,
+            *inputs: torch.Tensor
+        ) -> Tuple[ torch.Tensor, ... ] :
+        """ Internal autograd-friendly Forward RPC call to a list of neuron endpoints.
 
             Args:
-                neurons (:obj:`List[bittensor.proto.Neuron]` of shape :obj:`(num_neurons)`, `required`):
-                    List of remote neurons which match length of x. Tensors from x are sent forward to these neurons.
+                ctx: (:obj:`torch.autograd.ctx`, `required`):
+                    Autograd context, saves state information between forward and backward calls. i.e. inputs for gradient computation.
 
-                x (:obj:`List[torch.Tensor]` of shape :obj:`(num_neurons * [batch_size, sequence_len])`, `required`):
-                    List of tensors to send to corresponsing neurons. Tensors are text input_ids encoded using the
-                    bittensor tokenizer of shape [batch_size, sequence_len].
+                dummy: (:obj:`torch.Tensor`, `required`):
+                    Dummy torch tensor used to ensure that torch.backward computation is called on this function 
+                    regardless of the input types.
+
+                neurons (:obj:`List[bittensor.proto.Neuron]` of shape :obj:`(shape)`, `required`):
+                    List of remote neurons which match length of inputs. Tensors inputs are sent forward to these neurons.
+
+                modality (:obj:`bittensor.proto.Modality` of shape :obj:`(1)`, `required`):
+                    Bittensor forward modality type. Enum in [TEXT, IMAGE, TENSOR]
+
+                inputs (:obj:`List[torch.Tensor]` of shape :obj:`(shape)`, `required`):
+                    List of torch tensors to be sent to the associated endpoint neurons.
 
             Returns:
-                forwad_output (:obj:`List[torch.FloatTensor]` of shape :obj:`(batch_size, sequence_len, bittensor.__network_dim__)`, `required`):
-                    Output encodings of inputs produced by remote neurons. Non-responses are zeroes of common shape.
-
-                return_codes (:obj:`List[torch.LongTensor]` of shape :obj:`[num_neurons]`, `required`):
-                    dendrite call return ops.
+                codes (:obj:`torch.LongTensor, `required`):
+                    Return code associated with forward call.
+                
+                outputs (:obj:`List[torch.FloatTensor]`, torch.LongTensor]`, `required`):
+                    Results from each endpoint.
         """
-        if len(x[0].shape) != 2:
-            error_msg = 'Text inputs should rank 2 with semantic shape: [batch_size, sequence_len]'
-            raise ValueError(error_msg)
-        if len(x) != len(neurons):
-            error_msg = 'List of text inputs x should have the same length as passed destination neurons, got {} and {}'.format(len(x), len(neurons))
-            raise ValueError(error_msg)
-        if len(x) < 1:
-            error_msg = 'Must pass more than 0 input for argument x, got {}'.format(len(x))
-            raise ValueError(error_msg)
-        return self.forward(neurons, x, bittensor.proto.Modality.TEXT)
+        ctx.dendrite = dendrite
+        ctx.neurons, ctx.inputs, ctx.modality = neurons, inputs, modality
+        inputs = [ x.clone().detach() for x in inputs ]
+        bittensor.__logger__.debug('-> Forward n_inputs = {}', len(inputs))
+        outputs, forward_codes, messages = ctx.dendrite._dendrite.forward(
+            neurons = neurons, 
+            inputs = inputs, 
+            modality = modality
+        )
+        bittensor.__logger__.debug('<- Forward messages: {}', list(zip(forward_codes, messages)))
+        ctx.forward_codes = forward_codes
+        return (torch.tensor(forward_codes, dtype=torch.int64), *outputs)
 
-    def forward_image(self, neurons: List[bittensor.proto.Neuron],
-                      x: List[torch.Tensor]) -> Tuple[List[torch.Tensor], torch.Tensor]:
-        r""" Forward image inputs to neurons.
+    @staticmethod
+    @once_differentiable
+    def backward( 
+            ctx, 
+            code_grads: torch.FloatTensor,
+            *output_grads: torch.FloatTensor
+        ) -> Tuple[ Optional[torch.Tensor], ... ]:
+        """ Internal autograd-friendly Backward RPC call to a list of neuron endpoints.
+
+            Args:
+                ctx: (:obj:`torch.autograd.ctx`, `required`):
+                    Autograd context, saves state information between forward and backward calls. i.e. inputs for gradient computation.
+  
+                grads (:obj:`List[torch.Tensor]` of shape :obj:`(shape)`, `required`):
+                    Gradients of this function's outputs computed during the loss.backward() call.
+            
+            Returns:
+                DUMMY, None, None,
+                outputs (:obj:`List[torch.FloatTensor], `optional`):
+                    Gradient results for each input.
+
+        """
+        grads_cpu = [ x.clone().detach() for x in output_grads ]
+        bittensor.__logger__.debug('-> Backward n_inputs = {}', len(grads_cpu))
+        input_grads, codes, messages =  ctx.dendrite._dendrite.backward (
+            neurons = ctx.neurons, 
+            inputs = ctx.inputs, 
+            grads = grads_cpu, 
+            codes = ctx.forward_codes, 
+            modality = ctx.modality
+        )
+        bittensor.__logger__.debug('<- Backward messages: {}', list(zip(codes, messages)))
+        return (None, None, None, None, *input_grads)
+
+    def _forward(
+                self,
+                neurons: List[bittensor.proto.Neuron],
+                inputs: List[torch.Tensor],
+                modality: bittensor.proto.Modality
+            ) -> Tuple[List[torch.Tensor], torch.LongTensor]:
+            r""" Internal Forward tensor inputs to a list of neuron endpoints.
+
+                Args:
+                    neurons (:obj:`List[bittensor.proto.Neuron]` of shape :obj:`(num_neurons)`, `required`):
+                        List of remote neurons which match length of inputs. Tensors from inputs are sent forward to these neurons.
+
+                    inputs (:obj:`List[torch.Tensor]` of shape :obj:`(num_neurons * [shape])`, `required`):
+                        List of tensors to send to corresponsing neurons. Tensors are of arbitrary type and shape depending on the
+                        modality.
+
+                    modality (:obj:`bittensor.proto.Modality` of shape :obj:`(1)`, `required`):
+                        Bittensor forward modality type. Enum in [TEXT, IMAGE, TENSOR]
+
+                Returns:
+                    codes (:obj:`List[torch.LongTensor]` of shape :obj:`[num_neurons]`, `required`):
+                        dendrite call return ops.
+
+                    responses (:obj:`List[torch.FloatTensor]` of shape :obj:`(batch_size, sequence_len, bittensor.__network_dim__)`, `required`):
+                        Output encodings of inputs produced by remote neurons. Non-responses are zeroes of common shape.
+            """
+            forward_response = Dendrite.apply(
+                self,
+                DUMMY, 
+                neurons, 
+                modality,
+                *inputs
+            )
+            codes = forward_response[0]
+            tensors = forward_response[1:]
+            return codes, tensors
+
+    def forward_text(
+                self,
+                neurons: List[bittensor.proto.Neuron],
+                inputs: List[torch.Tensor]
+            ) -> Tuple[List[torch.Tensor], torch.Tensor]:
+            r""" Forward text inputs to a list of neuron endpoints.
+
+                Args:
+                    neurons (:obj:`List[bittensor.proto.Neuron]` of shape :obj:`(num_neurons)`, `required`):
+                        List of remote neurons which match length of x. Tensors from inputs are sent forward to these neurons.
+
+                    inputs (:obj:`List[torch.Tensor]` of shape :obj:`(num_neurons * [batch_size, sequence_len])`, `required`):
+                        List of tensors to send to corresponsing neurons. Tensors are text input_ids encoded using the
+                        bittensor tokenizer of shape [batch_size, sequence_len].
+
+                Returns:
+                    codes (:obj:`List[torch.LongTensor]` of shape :obj:`[num_neurons]`, `required`):
+                        dendrite call return ops.
+
+                    responses (:obj:`List[torch.FloatTensor]` of shape :obj:`(batch_size, sequence_len, bittensor.__network_dim__)`, `required`):
+                        Output encodings of inputs produced by remote neurons. Non-responses are zeroes of common shape.
+            """
+            if len(inputs[0].shape) != 2:
+                error_msg = 'Text inputs should have rank 2 with semantic shape: [batch_size, sequence_len], got {}'.format(inputs[0].shape)
+                raise ValueError(error_msg)
+            if len(inputs) != len(neurons):
+                error_msg = 'List of text inputs should have the same length as passed destination neurons, got {} and {}'.format(len(inputs), len(neurons))
+                raise ValueError(error_msg)
+            if len(inputs) < 1:
+                error_msg = 'Must pass more than 0 inputs, got {}'.format(len(inputs))
+                raise ValueError(error_msg)
+
+            return self._forward (
+                neurons = neurons, 
+                modality = bittensor.proto.Modality.TEXT,
+                inputs = inputs
+            )
+
+    def forward_image(
+                self,
+                neurons: List[bittensor.proto.Neuron],
+                inputs: List[torch.Tensor]
+            ) -> Tuple[List[torch.Tensor], torch.Tensor]:
+        r""" Forward image inputs to list of neuron endpoints.
 
             Args:
                 neurons (:obj:`List[bittensor.proto.Neuron]` of shape :obj:`(num_neurons)`, `required`):
-                    List of remote neurons which match length of x. Tensors from x are sent forward to these neurons.
+                    List of remote neurons which match length of x. Tensors from inputs are sent forward to these neurons.
 
-                x (:obj:`List[torch.Tensor]` of shape :obj:`(num_neurons * [batch_size, sequence_len, channels, rows, cols])`, `required`):
+                inputs (:obj:`List[torch.Tensor]` of shape :obj:`(num_neurons * [batch_size, sequence_len, channels, rows, cols])`, `required`):
                     List of image-tensors to send to corresponsing neurons. Tensors are images encoded using the
                     torch.toTensor() or other encoding which produces the shape [batch_size, channels, rows, cols].
 
             Returns:
-                forwad_output (:obj:`List[torch.FloatTensor]` of shape :obj:`(batch_size, sequence_len, bittensor.network_size)`, `required`):
-                    Output encodings of images produced by remote neurons. Non-responses are zeroes of common shape.
-
-                return_codes (:obj:`List[torch.LongTensor]` of shape :obj:`[num_neurons]`, `required`):
+                codes (:obj:`List[torch.LongTensor]` of shape :obj:`[num_neurons]`, `required`):
                     dendrite call return ops.
+
+                responses (:obj:`List[torch.FloatTensor]` of shape :obj:`(batch_size, sequence_len, bittensor.network_size)`, `required`):
+                    Output encodings of images produced by remote neurons. Non-responses are zeroes of common shape.
         """
         # TODO(const): Checks across all tensors and other shape checks.
-        if len(x[0].shape) != 5:
+        if len(inputs[0].shape) != 5:
             error_msg = 'Image inputs should be rank 5 with semantic shape: [batch_size, sequence_dim, channels, rows, cols]'
             raise ValueError(error_msg)
-        if len(x) != len(neurons):
-            error_msg = 'List of image inputs x should have the same length as passed destination neurons, got {} and {}'.format(len(x), len(neurons))
+        if len(inputs) != len(neurons):
+            error_msg = 'List of image inputs should have the same length as passed destination neurons, got {} and {}'.format(len(inputs), len(neurons))
             raise ValueError(error_msg)
-        if len(x) < 1:
-            error_msg = 'Must pass more than 0 input for argument x, got {}'.format(len(x))
+        if len(inputs) < 1:
+            error_msg = 'Must pass more than 0 inputs, got {}'.format(len(inputs))
             raise ValueError(error_msg)
-        return self.forward(neurons, x, bittensor.proto.Modality.IMAGE)
 
-    def forward_tensor(self, neurons: List[bittensor.proto.Neuron],
-                       x: List[torch.Tensor]) -> Tuple[List[torch.Tensor], torch.Tensor]:
-        r""" Forward tensor inputs to neurons.
+        return self._forward (
+                neurons = neurons, 
+                modality = bittensor.proto.Modality.TEXT,
+                inputs = inputs
+        )
+
+    def forward_tensor(
+                self,
+                neurons: List[bittensor.proto.Neuron],
+                inputs: List[torch.Tensor]
+            ) -> Tuple[List[torch.Tensor], torch.Tensor]:
+        r""" Forward tensor inputs to a list of neuron endpoints.
 
             Args:
                 neurons (:obj:`List[bittensor.proto.Neuron]` of shape :obj:`(num_neurons)`, `required`):
-                    List of remote neurons which match length of x. Tensors from x are sent forward to these neurons.
+                    List of remote neurons which match length of x. Tensors from inputs are sent forward to these neurons.
 
-                x (:obj:`List[torch.Tensor]` of shape :obj:`(num_neurons * [batch_size, sequence_len, bittensor.__network_dim__])`, `required`):
+                inputs (:obj:`List[torch.Tensor]` of shape :obj:`(num_neurons * [batch_size, sequence_len, bittensor.__network_dim__])`, `required`):
                     List of tensors to send to corresponsing neurons. Tensors are of arbitrary type and
                     with shape [batch_size, sequence_len, bittensor.__network_dim__].
 
             Returns:
-                forwad_output (:obj:`List[torch.FloatTensor]` of shape :obj:`num_neurons * (batch_size, sequence_len, bittensor.__network_dim__)]`, `required`):
-                    Output encodings of tensors produced by remote neurons. Non-responses are zeroes of common shape.
-
-                return_codes (:obj:`List[torch.LongTensor]` of shape :obj:`[num_neurons]`, `required`):
+                codes (:obj:`List[torch.LongTensor]` of shape :obj:`[num_neurons]`, `required`):
                     dendrite call return ops.
+
+                response (:obj:`List[torch.FloatTensor]` of shape :obj:`num_neurons * (batch_size, sequence_len, bittensor.__network_dim__)]`, `required`):
+                    Output encodings of tensors produced by remote neurons. Non-responses are zeroes of common shape.
         """
-        if len(x[0].shape) != 3:
+        if len(inputs[0].shape) != 3:
             error_msg = 'Tensor inputs should be rank 3 with semantic shape: [batch_size, sequence_len, feature_len]'
             raise ValueError(error_msg)
-        if len(x) != len(neurons):
-            error_msg = 'List of tensor inputs x should have the same length as passed destination neurons, got {} and {}'.format(len(x), len(neurons))
+        if len(inputs) != len(neurons):
+            error_msg = 'List of tensor inputs should have the same length as passed destination neurons, got {} and {}'.format(len(inputs), len(neurons))
             raise ValueError(error_msg)
-        if x[0].shape[2] != bittensor.__network_dim__:
-            error_msg = 'Passed tensor must have last dimension {} got {}'.format(bittensor.__network_dim__, x[0].shape[2])
+        if inputs[0].shape[2] != bittensor.__network_dim__:
+            error_msg = 'Passed tensors must have last dimension {} got {}'.format(bittensor.__network_dim__, inputs[0].shape[2])
             raise ValueError(error_msg)
-        if len(x) == 0:
-            error_msg = 'Must pass more than 0 input for argument x, got {}'.format(len(x))
+        if len(inputs) == 0:
+            error_msg = 'Must pass more than 0 inputs, got {}'.format(len(inputs))
             raise ValueError(error_msg)
-        return self.forward(neurons, x, bittensor.proto.Modality.TENSOR)
 
-    def forward(self, neurons: List[bittensor.proto.Neuron],
-                x: List[torch.Tensor],
-                mode: bittensor.proto.Modality) -> Tuple[List[torch.Tensor], torch.LongTensor]:
+        return self._forward (
+                neurons = neurons, 
+                modality = bittensor.proto.Modality.TEXT,
+                inputs = inputs
+        )
+
+class _Dendrite:
+    r"""
+        Process Safe Dendrite object, holds RPC connections to other nodes.
+    """
+    def __init__(self, config: Munch = None, wallet: 'bittensor.Wallet' = None, **kwargs):
+        r""" Initializes a new shared dendrite object.
+            Args:
+                config (:obj:`Munch`, `optional`): 
+                    dendrite.Dendrite.config()
+                wallet (:obj:`bittensor.Wallet`, `optional`):
+                    bittensor wallet with hotkey and coldkeypub.
+        """
+        # Config: Holds all config items for this items and those that are recursively defined. Specifically
+        # config for you wallet and metagraph.
+        if config == None:
+            config = _Dendrite.default_config()
+        _Dendrite.check_config( config )
+        self.config = config
+
+        # Wallet: Holds you hotkey keypair and coldkey pub, which can be used to sign messages 
+        # and subscribe to the chain.
+        if wallet == None:
+            wallet = bittensor.wallet.Wallet(self.config)
+        self.wallet = wallet
+
+        # Receptors: Holds a map from publickey -> receptor objects. Receptors encapsulate a TCP connection between
+        # this dendrite and an upstream neuron (i.e. a peer we call for representations)
+        self.receptors = {}
+
+        # Stats: hold statistics for this dendrite.
+        self.stats = SimpleNamespace(
+            qps = stat_utils.timed_rolling_avg(0.0, 0.01),
+        )
+
+    @staticmethod   
+    def default_config() -> Munch:
+        parser = argparse.ArgumentParser(); 
+        _Dendrite.add_args(parser) 
+        config = bittensor.config.Config.to_config(parser); 
+        return config
+
+    @staticmethod   
+    def check_config(config: Munch):
+        pass
+
+    @staticmethod   
+    def add_args(parser: argparse.ArgumentParser):
+        bittensor.receptor.Receptor.add_args(parser)
+        pass
+
+    def __del__(self):
+        for receptor in self.receptors.values():
+            bittensor.__logger__.debug('Deleting receptor with neuron: {}', receptor.neuron )
+            del receptor
+
+    def get_receptor_for_neuron( self, neuron: bittensor.proto.Neuron ) -> 'bittensor.receptor.Receptor':
+        # TODO(const): receptor retention should go here.
+        # ---- Find receptor, update or create one ---- 
+        if neuron.public_key in self.receptors:
+            receptor = self.receptors[neuron.public_key]
+
+            # Change receptor address.
+            if receptor.neuron.address != neuron.address or receptor.neuron.port != neuron.port:
+                del receptor
+                bittensor.__logger__.debug('Update receptor for neuron: {}', neuron )
+                receptor = bittensor.receptor.Receptor (
+                    neuron = neuron, 
+                    config = self.config, 
+                    wallet = self.wallet
+                )            
+                self.receptors[neuron.public_key] = receptor
+
+        else:
+            # Create new receptor.
+            bittensor.__logger__.debug('Create receptor for neuron: {}', neuron )
+            receptor = bittensor.receptor.Receptor (
+                    neuron = neuron, 
+                    config = self.config, 
+                    wallet = self.wallet
+            )
+            self.receptors[neuron.public_key] = receptor
+
+        return receptor
+
+    def forward(self, 
+                neurons: List[bittensor.proto.Neuron],
+                inputs: List[torch.Tensor],
+                modality: bittensor.proto.Modality
+        ) -> Tuple[List[torch.Tensor], List[int], List[str]]:
         r""" Forward tensor inputs to neurons.
 
             Args:
@@ -200,51 +468,111 @@ class Dendrite(nn.Module):
                     List of tensors to send to corresponsing neurons. Tensors are of arbitrary type and shape depending on the
                     modality.
 
-                mode (:obj:`bittensor.proto.Modality` of shape :obj:`(1)`, `required`):
+                modality (:obj:`bittensor.proto.Modality` of shape :obj:`(1)`, `required`):
                     Bittensor forward modality type. Enum in [TEXT, IMAGE, TENSOR]
 
             Returns:
                 forward_outputs (:obj:`List[torch.FloatTensor]` of shape :obj:`num_neurons * (batch_size, sequence_len, bittensor.network_size)]`, `required`):
                     Output encodings of tensors produced by remote neurons. Non-responses are zeroes of common shape.
 
-                return_codes (:obj:`List[torch.LongTensor]` of shape :obj:`[num_neurons]`, `required`):
+                return_codes (:obj:`List[bittensor.proto.ReturnCode]` of shape :obj:`[num_neurons]`, `required`):
                     dendrite call return ops.
         """
-        if len(x) != len(neurons):
-            error_msg = 'List of inputs x should have the same length as passed destination neurons, got {} and {}'.format(len(x), len(neurons))
-            raise ValueError(error_msg)
-        if len(x) < 1:
-            error_msg = 'Must pass more than 0 input for argument x, got {}'.format(len(x))
-            raise ValueError(error_msg)
-
         # ---- Stats ---
         self.stats.qps.update(1)
 
         # ---- Run async calls ----
         loop = asyncio.new_event_loop()
-        results = loop.run_until_complete(self._gather(loop, x, neurons, mode))
+        results = loop.run_until_complete( self._forward_gather (
+            loop = loop, 
+            neurons = neurons, 
+            inputs = inputs, 
+            modality = modality
+        ))
         loop.stop()
 
         # ---- Process results and return ----
         tensor_results = [res[0] for res in results]
-        return_codes = torch.tensor([res[1] for res in results])
-        return tensor_results, return_codes
+        return_codes = [res[1] for res in results]
+        messages = [res[2] for res in results]
+        return tensor_results, return_codes, messages
 
-    async def _gather(self, loop: asyncio.base_events.BaseEventLoop, inputs, neurons, mode) -> List[Tuple[torch.FloatTensor, torch.LongTensor]]:
+    def backward(
+                self, 
+                neurons: List[bittensor.proto.Neuron],
+                inputs: List[torch.Tensor],
+                grads: List[torch.Tensor],
+                codes: List[int],
+                modality: bittensor.proto.Modality
+            ) -> Tuple[List[torch.Tensor], List[int], List[str]]:
+        r""" Forward tensor inputs to neurons.
+
+            Args:
+                neurons (:obj:`List[bittensor.proto.Neuron]` of shape :obj:`(num_neurons)`, `required`):
+                    List of remote neurons which match length of x. Tensors from x are sent forward to these neurons.
+
+                inputs (:obj:`List[torch.Tensor]` of shape :obj:`(num_neurons * [shape])`, `required`):
+                    List of tensors to send to corresponsing neurons. Tensors are of arbitrary type and shape depending on the
+                    modality.
+
+                grads (:obj:`List[torch.Tensor]` of shape :obj:`(num_neurons * [shape])`, `required`):
+                    List of grad tensors to send to corresponsing inputs. 
+
+                codes (:obj:`List[bittensor.proto.ReturnCode]` of shape :obj:`[num_neurons]`, `required`):
+                    dendrite call return ops from previous forward call.
+
+                modality (:obj:`bittensor.proto.Modality` of shape :obj:`(1)`, `required`):
+                    Bittensor forward modality type. Enum in [TEXT, IMAGE, TENSOR]
+
+            Returns:
+                forward_outputs (:obj:`List[torch.FloatTensor]` of shape :obj:`num_neurons * (batch_size, sequence_len, bittensor.network_size)]`, `required`):
+                    Output encodings of tensors produced by remote neurons. Non-responses are zeroes of common shape.
+
+                return_codes (:obj:`List[bittensor.proto.ReturnCodes]` of shape :obj:`[num_neurons]`, `required`):
+                    dendrite call return ops.
+
+                messages (:obj:`List[str]` of shape :obj:`[num_neurons]`, `required`):
+                    messages associated with return codes
+        """
+        # ---- Run async calls ----
+        loop = asyncio.new_event_loop()
+        results = loop.run_until_complete( self._backward_gather (
+            loop = loop, 
+            neurons = neurons, 
+            inputs = inputs, 
+            grads = grads, 
+            codes = codes, 
+            modality = modality
+        ))
+        loop.stop()
+
+        # ---- Process results and return ----
+        tensor_results = [res[0] for res in results]
+        return_codes = [res[1] for res in results]
+        messages = [res[2] for res in results]
+        return tensor_results, return_codes, messages
+
+    async def _forward_gather(
+            self, 
+            loop: asyncio.base_events.BaseEventLoop, 
+            neurons: List[bittensor.proto.Neuron],
+            inputs: List[torch.Tensor],
+            modality: bittensor.proto.Modality
+        ) -> List[Tuple[torch.FloatTensor, int]]:
         r""" Creates and returns the results from len(neurons) torch forward requests. Uses asyncio for concurrency.
 
             Args:
                 loop (:obj:`asyncio.base_events.BaseEventLoop`, `required`):
                     The asyncio concurrency loop to use while making the n calls.
 
+                neurons (:obj:`List[bittensor.proto.Neuron]` of shape :obj:`(num_neurons)`, `required`):
+                    List of remote neurons which match length of x. Tensors from x are sent forward to these neurons.
+
                 inputs (:obj:`List[torch.Tensor]` of shape :obj:`(num_neurons * [shape])`, `required`):
                     List of tensors to send to corresponsing neurons. Tensors are of arbitrary type and shape depending on the
                     modality.
 
-                neurons (:obj:`List[bittensor.proto.Neuron]` of shape :obj:`(num_neurons)`, `required`):
-                    List of remote neurons which match length of x. Tensors from x are sent forward to these neurons.
-
-                mode (:obj:`bittensor.proto.Modality` of shape :obj:`(1)`, `required`):
+                modality (:obj:`bittensor.proto.Modality` of shape :obj:`(1)`, `required`):
                     Bittensor forward modality type. Enum in [TEXT, IMAGE, TENSOR]
 
             Returns:
@@ -255,53 +583,102 @@ class Dendrite(nn.Module):
         # ---- Calls to fill ---- 
         calls = []
         for (inputs_i, neuron_i) in list(zip(inputs, neurons)):
-
-            # ---- Find receptor or create one ---- 
-            if neuron_i.public_key not in self._receptors:
-                self._receptors[neuron_i.public_key] = bittensor.receptor.Receptor(neuron_i, self.config, self.wallet)
-            receptor = self._receptors[neuron_i.public_key]
-
-            # ---- Append async calls ---- 
-            calls.append( loop.run_in_executor(None, receptor.forward, inputs_i, mode) )
+            receptor = self.get_receptor_for_neuron( neuron_i )
+            calls.append( loop.run_in_executor( None, receptor.forward, 
+                inputs_i, 
+                modality
+            ))
 
         # ---- Gather results and return ---- 
         results = await asyncio.gather(*calls)
         return results
 
-    def __str__(self):
+    async def _backward_gather(
+            self, 
+            loop: asyncio.base_events.BaseEventLoop, 
+            neurons: List[bittensor.proto.Neuron],
+            inputs: List[torch.Tensor],
+            grads: List[torch.Tensor],
+            codes: List[int],
+            modality: bittensor.proto.Modality
+        ) -> List[Tuple[torch.FloatTensor, int, str]]:
+        r""" Creates and returns the results from len(neurons) torch forward requests. Uses asyncio for concurrency.
+
+            Args:
+                loop (:obj:`asyncio.base_events.BaseEventLoop`, `required`):
+                    The asyncio concurrency loop to use while making the n calls.
+
+                neurons (:obj:`List[bittensor.proto.Neuron]` of shape :obj:`(num_neurons)`, `required`):
+                    List of remote neurons which match length of x. Tensors from x are sent forward to these neurons.
+
+                inputs (:obj:`List[torch.Tensor]` of shape :obj:`(num_neurons * [shape])`, `required`):
+                    List of tensors to send to corresponsing neurons. Tensors are of arbitrary type and shape depending on the
+                    modality.
+
+                grads (:obj:`List[torch.Tensor]` of shape :obj:`(shape)`, `required`):
+                    List of grad-tensors to send to corresponsing neurons. 
+
+                codes (:obj:`List[bittensor.proto.ReturnCode]` of shape :obj:`[num_neurons]`, `required`):
+                    dendrite call return ops from previous forward call.
+
+                modality (:obj:`bittensor.proto.Modality` of shape :obj:`(1)`, `required`):
+                    Bittensor forward modality type. Enum in [TEXT, IMAGE, TENSOR]
+
+            Returns:
+                results (:obj:`List[Tuple[torch.FloatTensor, torch.LongTensor]]`, `required`):
+                    result tuples from the forward call on a Receptor class.
+        """
+            
+        # ---- Calls to fill ---- 
+        calls = []
+        for (inputs_i, grads_i, code_i, neuron_i) in list(zip(inputs, grads, codes, neurons)):
+
+            # ---- Append async calls ----
+            receptor = self.get_receptor_for_neuron( neuron_i )
+            calls.append( loop.run_in_executor( None, receptor.backward, 
+                inputs_i, 
+                grads_i, 
+                code_i, 
+                modality
+            ))
+
+        # ---- Gather results and return ---- 
+        results = await asyncio.gather(*calls)
+        return results
+
+    def getReceptors(self):
+        return self.receptors
+    
+    def toString(self):
         total_bytes_out = 0
         total_bytes_in = 0
-        for receptor in self._receptors.values():
+        for receptor in self.receptors.values():
             total_bytes_out += receptor.stats.forward_bytes_out.value
             total_bytes_in += receptor.stats.forward_bytes_in.value
         qps_str = colored('{:.3f}'.format(self.stats.qps.value), 'blue')
-        total_out_bytes_str = colored('\u290A{:.1f}'.format((total_bytes_out*8)/1000), 'green')
-        total_in_bytes_str = colored('\u290B{:.1f}'.format((total_bytes_in*8)/1000), 'red')
+        total_in_bytes_str = colored('\u290A {:.1f}'.format((total_bytes_in*8)/1000), 'green')
+        total_out_bytes_str = colored('\u290B {:.1f}'.format((total_bytes_out*8)/1000), 'red')
         return "(" + qps_str + "q/s|" + total_in_bytes_str + "/" + total_out_bytes_str + "kB/s" + ")"
 
-    def __full_str__(self):
-        uids = [receptor.neuron.uid for receptor in self._receptors.values()]
-        bytes_out = [receptor.stats.forward_bytes_out.value * (8/1000) for receptor in self._receptors.values()]
-        bytes_in = [receptor.stats.forward_bytes_in.value * (8/1000) for receptor in self._receptors.values()]
-        qps = [receptor.stats.forward_qps.value + receptor.stats.backward_qps.value for receptor in self._receptors.values()]
+    def fullToString(self):
+        uids = [receptor.neuron.uid for receptor in self.receptors.values()]
+        bytes_out = [receptor.stats.forward_bytes_out.value * (8/1000) for receptor in self.receptors.values()]
+        bytes_in = [receptor.stats.forward_bytes_in.value * (8/1000) for receptor in self.receptors.values()]
+        qps = [receptor.stats.forward_qps.value + receptor.stats.backward_qps.value for receptor in self.receptors.values()]
         rows = [bytes_out, bytes_in, qps]
         df = pd.DataFrame(rows, columns=uids)
         df = df.rename(index={df.index[0]: colored('\u290A kB/s', 'green')})
         df = df.rename(index={df.index[1]: colored('\u290B kB/s', 'red')})
         df = df.rename(index={df.index[2]: colored('Q/s', 'blue')})
         return '\nDendrite:\n' + df.to_string(max_rows=5000, max_cols=25, line_width=1000, float_format = lambda x: '%.2f' % x, col_space=1, justify='left')
-    
-    def __to_tensorboard__(self, tensorboard, global_step):
+       
+    def toTensorboard(self, tensorboard, global_step):
         total_bytes_out = 0
         total_bytes_in = 0
-        for receptor in self._receptors.values():
+        for receptor in self.receptors.values():
             total_bytes_out += receptor.stats.forward_bytes_out.value
             total_bytes_in += receptor.stats.forward_bytes_in.value
         total_in_bytes = (total_bytes_in*8)/1000
         total_out_bytes = (total_bytes_out*8)/1000
         tensorboard.add_scalar('Dendrite/Incoming bytes', total_in_bytes, global_step)
         tensorboard.add_scalar('Dendrite/Outgoing bytes', total_out_bytes, global_step)
-
-    @property
-    def receptors(self):
-        return self._receptors.values()

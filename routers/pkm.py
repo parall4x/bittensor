@@ -191,13 +191,13 @@ class PKMRouter():
         # responses: image responses from neurons.
         # responses.shape = neurons.size * [-1, sequence_dim, __network_dim__]
         if modality == bittensor.proto.Modality.TEXT:
-            responses, retops = neuron.dendrite.forward_text(neurons, requests)
+            codes, responses = neuron.dendrite.forward_text(neurons, requests)
 
         elif modality == bittensor.proto.Modality.IMAGE:
-            responses, retops = neuron.dendrite.forward_image(neurons, requests)
+            codes, responses = neuron.dendrite.forward_image(neurons, requests)
 
         elif modality == bittensor.proto.Modality.TENSOR:
-            responses, retops = neuron.dendrite.forward_tensor(neurons, requests)
+            codes, responses = neuron.dendrite.forward_tensor(neurons, requests)
 
         else:
             raise NotImplementedError
@@ -254,7 +254,7 @@ class PKMRouter():
         output.response = combined
         output.weights = weights
         output.request_sizes = filled_request_sizes
-        output.return_codes = retops
+        output.return_codes = codes
         return output
 
 
