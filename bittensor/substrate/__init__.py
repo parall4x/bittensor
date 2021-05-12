@@ -400,7 +400,7 @@ class SubtensorClientProtocol(WebSocketClientProtocol):
         logger.trace("Sending message: {}", payload)
         super().sendMessage(payload, isBinary, fragmentSize, sync, doNotCompress)
 
-    async def async_rpc_request( self, method, params, result_handler = None, is_subscription = False, timeout = 10 ) -> dict:
+    async def async_rpc_request( self, method, params, result_handler = None, is_subscription = False, timeout = 30 ) -> dict:
         r""" Creates a websocket message and waits until the response is recieved.
             Maintains memory about the sent request and only returns when the passed handler produces a
             non-null response or a timeout occurs. The call is blocking.

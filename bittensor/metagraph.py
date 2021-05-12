@@ -570,45 +570,52 @@ class Metagraph():
         loop.set_debug(enabled=True)
         loop.run_until_complete(self._async_sync_cache())
 
+    def is_neuron_active(self, current_block, last_emit_block):
+        return (current_block - last_emit_block) < self.config.metagraph.stale_emit_filter or self.config.metagraph.stale_emit_filter < 0
+
+    def neuron_corresponds_to_wallet(self, neuron):
+        if not self.wallet.has_hotkey:
+            return False
+
+        wallet_pubkey = self.wallet.hotkey.public_key
+        if neuron['hotkey'] == wallet_pubkey:
+            return True
+
+        return False
+
     async def _async_sync_cache(self):
         r""" Async: Makes calls to chain updating local chain cache with newest info.
         """
-        # Make asyncronous calls to chain filling local state cache.
-        calls = []
         current_block = await self.subtensor.async_get_current_block()
-        active = dict( await self.subtensor.async_get_active() )
-        last_emit = dict( await self.subtensor.async_get_last_emit() )
+        stake = dict(await self.subtensor.async_get_stake())
+        last_emit_blocks = dict(await self.subtensor.async_get_last_emit())
+        weight_uids = dict(await self.subtensor.async_get_weight_uids())
+        weight_values = dict(await (self.subtensor.async_get_weight_vals()))
+        neurons = dict(await self.subtensor.async_neurons())
 
-        if self.wallet.has_hotkey:
-            self_uid = await self.subtensor.async_get_uid_for_pubkey( self.wallet.hotkey.public_key )
-            if self_uid != None:
-                calls.append ( self._poll_uid (self.wallet.hotkey.public_key, self_uid ) )     
+        for idx, neuron in neurons.items():
+            uid = neuron['uid']
+            neuron_last_emit_block = last_emit_blocks[uid]
+            if self.neuron_corresponds_to_wallet(neuron):
+                pass
+            elif not self.is_neuron_active(current_block, neuron_last_emit_block):
+                continue
 
-        for pubkey, uid in active.items():
-            if uid in last_emit:
-                emit_block = last_emit[ uid ]
-                if (current_block - emit_block) < self.config.metagraph.stale_emit_filter or self.config.metagraph.stale_emit_filter < 0:
-                        calls.append( self._poll_uid ( pubkey, uid ) )
-        
-        import tqdm.asyncio
-        for call in tqdm.asyncio.tqdm.as_completed( calls ):
-            await call
+            hotkeypub = neuron['hotkey']
+            w_uids = weight_uids[uid]
+            w_vals = weight_values[uid]
+            neuron_stake = stake[uid]
 
-    async def _poll_uid(self, pubkey: str, uid:int):
-        r""" Polls info info for a specfic public key.
-        """
-        try:
-            stake = await self.subtensor.async_get_stake_for_uid( uid )
-            lastemit = await self.subtensor.async_get_last_emit_data_for_uid( uid )
-            w_uids = await self.subtensor.async_weight_uids_for_uid( uid )
-            w_vals = await self.subtensor.async_weight_vals_for_uid( uid )
-            neuron = await self.subtensor.async_get_neuron_for_uid ( uid )
-            self.cache.add_or_update(pubkey = pubkey, ip = neuron['ip'], port = neuron['port'], uid = neuron['uid'], ip_type = neuron['ip_type'], modality = neuron['modality'], lastemit = lastemit, stake = stake.rao, w_uids = w_uids, w_vals = w_vals)
-
-        except Exception as e:
-            logger.trace('error while polling uid: {} with error: {}', uid, e )
-            #traceback.print_exc()
-
+            self.cache.add_or_update(pubkey=hotkeypub,
+                                     ip=neuron['ip'],
+                                     port=neuron['port'],
+                                     uid=neuron['uid'],
+                                     ip_type=neuron['ip_type'],
+                                     modality=neuron['modality'],
+                                     lastemit=neuron_last_emit_block,
+                                     stake=neuron_stake,
+                                     w_uids=w_uids,
+                                     w_vals=w_vals)
 
     EmitSuccess = 1
     EmitValueError = 2
