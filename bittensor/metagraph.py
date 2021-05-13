@@ -752,9 +752,9 @@ class Metagraph():
             return Metagraph.EmitValueError, message
 
         # ---- Check NO-OP ----
-        if self._are_set_on_chain(weight_vals, weight_uids):
-            message = "When trying to set weights on chain. Weights are unchanged, nothing to emit."
-            return Metagraph.EmitNoOp, message
+        # if self._are_set_on_chain(weight_vals, weight_uids):
+        #     message = "When trying to set weights on chain. Weights are unchanged, nothing to emit."
+        #     return Metagraph.EmitNoOp, message
 
         # ---- Emit ----
         logger.info('Emitting weights -> {}', list(zip(weight_uids, weight_vals)))
@@ -763,7 +763,7 @@ class Metagraph():
             destinations = weight_uids, 
             values = weight_vals, 
             wait_for_inclusion=True, 
-            timeout = bittensor.__blocktime__ * 3
+            timeout = bittensor.__blocktime__ * 5
         )
         if result:
             message = "Successful emission"
