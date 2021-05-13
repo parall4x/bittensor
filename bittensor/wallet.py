@@ -333,8 +333,8 @@ class Wallet():
         return st.st_mode & stat.S_IROTH
 
     @staticmethod
-    def __create_keypair() -> bittensor.substrate.Keypair:
-        return bittensor.substrate.Keypair.create_from_mnemonic(bittensor.substrate.Keypair.generate_mnemonic())
+    def __create_keypair() -> 'substrateinterface.Keypair':
+        return substrateinterface.Keypair.create_from_mnemonic(substrateinterface.Keypair.generate_mnemonic())
 
     @staticmethod
     def __save_keypair(keypair : 'substrateinterface.Keypair', path : str):

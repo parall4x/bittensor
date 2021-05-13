@@ -200,13 +200,13 @@ class Neuron:
         self.metagraph.sync()
         logger.info( self.metagraph )
 
-    def connect_to_chain ( self ):
+    # def connect_to_chain ( self ):
         # ---- Connect to chain ----
-        logger.info('\nConnecting to network...')
-        self.subtensor.connect()
-        if not self.subtensor.is_connected():
-            logger.critical('Failed to connect subtensor to network:<cyan>{}</cyan>', self.subtensor.config.subtensor.network)
-            quit()
+        # logger.info('\nConnecting to network...')
+        # self.subtensor.connect()
+        # if not self.subtensor.is_connected():
+        #     logger.critical('Failed to connect subtensor to network:<cyan>{}</cyan>', self.subtensor.config.subtensor.network)
+        #     quit()
 
     def subscribe_to_chain( self ):
         # ---- Subscribe to chain ----
@@ -231,7 +231,7 @@ class Neuron:
         self.init_logging()
         self.init_debugging()
         self.init_wallet()
-        self.connect_to_chain()
+        # self.connect_to_chain()
         self.subscribe_to_chain()
         self.init_axon()
         self.sync_metagraph()
