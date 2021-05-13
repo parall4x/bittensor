@@ -61,7 +61,7 @@ def connect( port:int ):
     subtensor = bittensor.subtensor.Subtensor(
         chain_endpoint = chain_endpoint,
     )
-    subtensor.connect()
+
     return subtensor
 
 def add_stake( subtensor, wallet: 'wallet:bittensor.wallet.Wallet', amount: 'Balance' ):
@@ -100,27 +100,22 @@ def subscribe( subtensor, wallet):
     )
 
 '''
-connect() tests
-'''
-
-def test_connect_success(setup_chain):
-    logger.error(setup_chain)
-    wallet = generate_wallet()
-    subtensor = connect(setup_chain)
-    result = subtensor.is_connected()
-    assert result is True
-
-'''
 subscribe() tests
 '''
 
 def test_subscribe_success(setup_chain):
     wallet = generate_wallet()
     subtensor = connect(setup_chain)
-    subtensor.is_connected()
     subscribe(subtensor, wallet)
     uid = subtensor.get_uid_for_pubkey(wallet.hotkey.public_key)
-    assert uid is not None
+    assert uid == 0
+
+    walletB = generate_wallet()
+    subscribe(subtensor, walletB)
+    uid = subtensor.get_uid_for_pubkey(walletB.hotkey.public_key)
+    assert uid == 1
+
+
 
 '''
 get_balance() tests
@@ -129,7 +124,6 @@ get_balance() tests
 def test_get_balance_no_balance(setup_chain):
     wallet = generate_wallet()
     subtensor = connect(setup_chain)
-    subtensor.is_connected()
     result = subtensor.get_balance(wallet.hotkey.ss58_address)
     assert result == Balance(0)
 
@@ -137,7 +131,6 @@ def test_get_balance_no_balance(setup_chain):
 def test_get_balance_success(setup_chain):
     hotkey_pair = Keypair.create_from_uri('//Alice')
     subtensor = connect(setup_chain)
-    subtensor.is_connected()
     result = subtensor.get_balance(hotkey_pair.ss58_address)
     assert int(result) == pow(10, 9)
 
@@ -153,7 +146,6 @@ def test_add_stake_success(setup_chain):
 
     wallet = generate_wallet(coldkey_pair=coldkeypair, hotkey_pair=hotkeypair)
     subtensor = connect(setup_chain)
-    subtensor.is_connected()
 
     # Subscibe the hotkey using Alice's cold key, which has TAO
     subscribe(subtensor, wallet)
@@ -190,7 +182,6 @@ def test_unstake_success(setup_chain):
     wallet = generate_wallet(coldkey_pair=coldkeypair, hotkey_pair=hotkey_pair)
 
     subtensor = connect(setup_chain)
-    subtensor.is_connected()
 
     subscribe(subtensor, wallet)
 
@@ -224,7 +215,6 @@ def test_get_stake_for_uid___has_stake(setup_chain):
 
     wallet = generate_wallet(coldkey_pair=coldkeypair, hotkey_pair=hotkeypair)
     subtensor = connect(setup_chain)
-    subtensor.is_connected()
 
     subscribe(subtensor, wallet)
     uid = subtensor.get_uid_for_pubkey(hotkeypair.public_key)
@@ -241,7 +231,6 @@ def test_get_stake_for_uid___has_no_stake(setup_chain):
 
     wallet = generate_wallet(coldkey_pair=coldkeypair, hotkey_pair=hotkeypair)
     subtensor = connect(setup_chain)
-    subtensor.is_connected()
 
     subscribe(subtensor, wallet)
     uid = subtensor.get_uid_for_pubkey(hotkeypair.public_key)
@@ -251,7 +240,6 @@ def test_get_stake_for_uid___has_no_stake(setup_chain):
 
 def test_get_stake_for_uid___unknown_uid(setup_chain):
     client = connect(setup_chain)
-    client.is_connected()
 
     result = client.get_stake_for_uid(999999999)
     assert int(result) == 0
@@ -268,7 +256,6 @@ def test_transfer_success(setup_chain):
     coldkey_bob = Keypair.create_from_uri("//Bob")
 
     subtensor = connect(setup_chain)
-    subtensor.is_connected()
 
     balance_alice_pre = subtensor.get_balance(coldkey_alice.ss58_address)
     balance_bob_pre = subtensor.get_balance(coldkey_bob.ss58_address)
@@ -291,36 +278,29 @@ def test_transfer_success(setup_chain):
 def test_get_uid_for_pubkey_succes(setup_chain):
     wallet = generate_wallet()
     subtensor = connect(setup_chain)
-    subtensor.is_connected()
     subscribe(subtensor, wallet)
     result = subtensor.get_uid_for_pubkey(wallet.hotkey.public_key)
     assert result is not None
 
 def test_get_current_block(setup_chain):
-    wallet = generate_wallet()
     subtensor = connect(setup_chain)
-    subtensor.is_connected()
     block = subtensor.get_current_block()
     assert block >= 0
 
 def test_get_active(setup_chain):
     wallet = generate_wallet()
     subtensor = connect(setup_chain)
-    subtensor.is_connected()
     subscribe(subtensor, wallet)
     result = subtensor.get_active()
     assert isinstance(result, List)
     assert len(result) > 0
     elem = result[0]
     assert isinstance(elem[0], str)
-    assert elem[0][:2] == "0x"
-    assert len(elem[0][2:]) == 64
     assert isinstance(elem[1], int)
 
 def test_get_neuron_for_uid(setup_chain):
     wallet = generate_wallet()
     subtensor = connect(setup_chain)
-    subtensor.is_connected()
     subscribe(subtensor, wallet)
     uid = subtensor.get_uid_for_pubkey(wallet.hotkey.public_key)
     result = subtensor.get_neuron_for_uid(uid)
@@ -343,7 +323,6 @@ def test_get_neuron_for_uid(setup_chain):
 def test_get_last_emit_data_for_uid__success(setup_chain):
     wallet = generate_wallet()
     subtensor = connect(setup_chain)
-    subtensor.is_connected()
     subscribe(subtensor, wallet)
     uid = subtensor.get_uid_for_pubkey(wallet.hotkey.public_key)
     result = subtensor.get_last_emit_data_for_uid( uid )
@@ -352,7 +331,6 @@ def test_get_last_emit_data_for_uid__success(setup_chain):
 
 def test_get_last_emit_data_for_uid__no_uid(setup_chain):
     subtensor = connect(setup_chain)
-    subtensor.is_connected()
     result = subtensor.get_last_emit_data_for_uid( 999999 )
     assert result is None
 
@@ -362,15 +340,13 @@ def test_get_neurons(setup_chain):
 
     subtensorA = connect(setup_chain)
     subtensorB = connect(setup_chain)
-    subtensorA.is_connected()
-    subtensorB.is_connected()
 
     subscribe( subtensorA, walletA )
     subscribe( subtensorB, walletB )
 
     result = subtensorA.neurons()
     assert isinstance(result, List)
-    assert len(result) >= 2
+    assert len(result) == 2
     elem = result[0]
     assert isinstance(elem, list)
     assert isinstance(elem[0], int) # This is the uid, which is the first element of the list
@@ -397,8 +373,6 @@ def test_set_weights_success(setup_chain):
 
     subtensorA = connect(setup_chain)
     subtensorB = connect(setup_chain)
-    subtensorA.is_connected()
-    subtensorB.is_connected()
 
     subscribe( subtensorA, walletA )
     subscribe( subtensorB, walletB )
