@@ -14,7 +14,7 @@ import bittensor
 from bittensor.utils.balance import Balance
 
 from bittensor.wallet import Wallet
-from bittensor.substrate import Keypair
+from bittensor.substrate_old import Keypair
 
 
 BLOCK_REWARD = 500_000_000

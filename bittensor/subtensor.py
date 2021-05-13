@@ -26,8 +26,8 @@ from termcolor import colored
 
 import bittensor
 import bittensor.utils.networking as net
-from bittensor.substrate import SubstrateWSInterface, Keypair
-from bittensor.substrate.exceptions import SubstrateRequestException
+from substrateinterface import SubstrateInterface
+from bittensor.substrate_old.exceptions import SubstrateRequestException
 from bittensor.utils.neurons import Neuron, Neurons
 from bittensor.utils.balance import Balance
 
@@ -174,21 +174,21 @@ class Subtensor:
         return await self.substrate.async_is_connected()
 
     def check_connection(self) -> bool:
-        r""" Checks if substrate websocket backend is connected, connects if it is not. 
+        r""" Checks if substrate_old websocket backend is connected, connects if it is not.
         """
         loop = asyncio.get_event_loop()
         loop.set_debug(enabled=True)
         return loop.run_until_complete(self.async_check_connection())
 
     async def async_check_connection(self) -> bool:
-        r""" Checks if substrate websocket backend is connected, connects if it is not. 
+        r""" Checks if substrate_old websocket backend is connected, connects if it is not.
         """
         if not await self.async_is_connected():
             return await self.async_connect()
         return True
 
     def connect( self, timeout: int = 10, failure = True ) -> bool:
-        r""" Attempts to connect the substrate interface backend. 
+        r""" Attempts to connect the substrate_old interface backend.
         If the connection fails, attemps another endpoint until a timeout.
         Args:
             timeout (int):
@@ -204,7 +204,7 @@ class Subtensor:
         return loop.run_until_complete(self.async_connect(timeout, failure))
 
     async def async_connect( self, timeout: int = 10, failure = True ) -> bool:
-        r""" Attempts to connect the substrate interface backend. 
+        r""" Attempts to connect the substrate_old interface backend.
         If the connection fails, attemps another endpoint until a timeout.
         Args:
             timeout (int):
@@ -265,7 +265,7 @@ To run a local node (See: docs/running_a_validator.md) \n
         If wait_for_inclusion or wait_for_finalization are true, the call will return true iff the 
         extrinsic enters or finalizes in a block.
         Args:
-            extrinsic (substrate extrinsic):
+            extrinsic (substrate_old extrinsic):
                 Extrinsic to send to the chain.
             wait_for_inclusion (bool):
                 If set, waits for the extrinsic to enter a block before returning true, 
