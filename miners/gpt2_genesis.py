@@ -231,11 +231,17 @@ class Miner( bittensor.miner.Miner ):
                 # ---- Emitting weights ----
                 try:
                     self.metagraph.set_weights(self.row, wait_for_inclusion = True) # Sets my row-weights on the chain.
+                except Exception as e:
+                    logger.error("Failed to set weights")
+                    raise e
 
+                try:
                     # ---- Sync metagraph ----
                     self.metagraph.sync() # Pulls the latest metagraph state (with my update.)
-                except:
-                    logger.error("Failed to set weights and sync metagraph! Could be  a connection  ")
+                except Exception as e:
+                    logger.error("Failed to sync metagraph")
+                    raise e
+
                 
                 self.row = self.metagraph.row.to(self.model.device)
                 # ---- Update Tensorboard ----
