@@ -104,7 +104,7 @@ class Executor ( bittensor.neuron.Neuron ):
         """
         self.wallet.assert_coldkey()
         self.wallet.assert_coldkeypub()
-        self.connect_to_chain()
+        # self.connect_to_chain()
         self.sync_metagraph()
         balance = self.subtensor.get_balance( self.wallet.coldkey.ss58_address )
         neurons = self._associated_neurons()
@@ -130,7 +130,7 @@ class Executor ( bittensor.neuron.Neuron ):
         """
         self.wallet.assert_coldkey()
         self.wallet.assert_coldkeypub()
-        self.connect_to_chain()
+        # self.connect_to_chain()
         neurons = self._associated_neurons()
         for neuron in neurons:
             neuron.stake = self.subtensor.get_stake_for_uid( neuron.uid )
@@ -151,7 +151,7 @@ class Executor ( bittensor.neuron.Neuron ):
         """
         self.wallet.assert_coldkey()
         self.wallet.assert_coldkeypub()
-        self.connect_to_chain()
+        # self.connect_to_chain()
         unstaking_balance = Balance.from_float( amount_tao )
         neurons = self._associated_neurons()
         neuron = neurons.get_by_uid( uid )

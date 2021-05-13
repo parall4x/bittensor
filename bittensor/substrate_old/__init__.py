@@ -462,7 +462,7 @@ class SubstrateWSInterface:
 
          Parameters
          ----------
-         url: the URL to the substrate node, either in format https://127.0.0.1:9933 or wss://127.0.0.1:9944
+         url: the URL to the substrate_old node, either in format https://127.0.0.1:9933 or wss://127.0.0.1:9944
          address_type: The address type which account IDs will be SS58-encoded to Substrate addresses. Defaults to 42, for Kusama the address type is 2
          type_registry: A dict containing the custom type registry in format: {'types': {'customType': 'u32'},..}
          type_registry_preset: The name of the predefined type registry shipped with the SCALE-codec, e.g. kusama

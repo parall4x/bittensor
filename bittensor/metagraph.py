@@ -16,7 +16,6 @@
 # DEALINGS IN THE SOFTWARE.
 
 import argparse
-import asyncio
 import copy
 import pandas as pd
 import json
@@ -563,13 +562,6 @@ class Metagraph():
         else:
             self.uid = None
 
-    def _sync_cache(self):
-        r""" Synchronizes the local self.state with the chain state.
-        """
-        loop = asyncio.get_event_loop()
-        loop.set_debug(enabled=True)
-        loop.run_until_complete(self._async_sync_cache())
-
     def is_neuron_active(self, current_block, last_emit_block):
         return (current_block - last_emit_block) < self.config.metagraph.stale_emit_filter or self.config.metagraph.stale_emit_filter < 0
 
@@ -583,15 +575,13 @@ class Metagraph():
 
         return False
 
-    async def _async_sync_cache(self):
-        r""" Async: Makes calls to chain updating local chain cache with newest info.
-        """
-        current_block = await self.subtensor.async_get_current_block()
-        stake = dict(await self.subtensor.async_get_stake())
-        last_emit_blocks = dict(await self.subtensor.async_get_last_emit())
-        weight_uids = dict(await self.subtensor.async_get_weight_uids())
-        weight_values = dict(await (self.subtensor.async_get_weight_vals()))
-        neurons = dict(await self.subtensor.async_neurons())
+    def _sync_cache(self):
+        current_block = self.subtensor.get_current_block()
+        stake = dict(self.subtensor.get_stake())
+        last_emit_blocks = dict(self.subtensor.get_last_emit())
+        weight_uids = dict(self.subtensor.get_weight_uids())
+        weight_values = dict((self.subtensor.get_weight_vals()))
+        neurons = dict(self.subtensor.neurons())
 
         for idx, neuron in neurons.items():
             uid = neuron['uid']
