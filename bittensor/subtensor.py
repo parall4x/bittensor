@@ -80,7 +80,7 @@ class Subtensor:
         Subtensor.check_config(config)
         self.config = copy.deepcopy(config)
 
-        chain_endpoint = "ws://feynman.akira.bittensor.com:9944" if not chain_endpoint else "ws://" + chain_endpoint
+        chain_endpoint = "ws://subtensor.rawatech.com:9944" if not chain_endpoint else "ws://" + chain_endpoint
 
         self.substrate = SubstrateInterface(
             ss58_format=42,
@@ -657,7 +657,7 @@ class Subtensor:
             module='SubtensorModule',
             storage_function='WeightUids'
         )
-        return result.records
+        return result
 
     def neurons(self) -> List[Tuple[int, dict]]:
         r""" Returns a list of neuron from the chain. 
@@ -686,7 +686,7 @@ class Subtensor:
     #     })
 
     def get_uid_for_pubkey(self, pubkey=str) -> Optional[int]:
-        r""" Returns the uid of the peer given passed public key string.
+        """ Returns the uid of the peer given passed public key string.
         Args:
             pubkey (str):
                 String encoded public key.
@@ -699,14 +699,13 @@ class Subtensor:
             storage_function='Active',
             params=[pubkey]
         )
-        logger.error(result)
 
         if result['result'] is None:
             return None
         return int(result['result'])
 
     def get_neuron_for_uid(self, uid) -> dict:
-        r""" Returns the neuron metadata of the peer with the passed uid.
+        """ Returns the neuron metadata of the peer with the passed uid.
         Args:
             uid (int):
                 Uid to query for metadata.
