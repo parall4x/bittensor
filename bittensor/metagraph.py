@@ -16,7 +16,6 @@
 # DEALINGS IN THE SOFTWARE.
 
 import argparse
-import asyncio
 import copy
 import pandas as pd
 import json
@@ -577,8 +576,6 @@ class Metagraph():
         return False
 
     def _sync_cache(self):
-        r""" Async: Makes calls to chain updating local chain cache with newest info.
-        """
         current_block = self.subtensor.get_current_block()
         stake = dict(self.subtensor.get_stake())
         last_emit_blocks = dict(self.subtensor.get_last_emit())

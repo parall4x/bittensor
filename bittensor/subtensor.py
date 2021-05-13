@@ -74,13 +74,13 @@ class Subtensor:
         Subtensor.check_config(config)
         self.config = copy.deepcopy(config)
 
-        websocket = "ws://feynman.kusanagi.bittensor.com"
+        url = "ws://feynman.akira.bittensor.com:9944"
 
         self.substrate = SubstrateInterface(
             address_type = 42,
             type_registry_preset='substrate-node-template',
             type_registry=self.custom_type_registry,
-            websocket=websocket
+            url=url
         )
 
     @staticmethod
@@ -174,7 +174,7 @@ class Subtensor:
     #         success (bool):
     #             True is the websocket is connected to the chain endpoint.
     #     """
-    #     return await self.substrate.async_is_connected()
+    #     return self.substrate.async_is_connected()
 
     # def check_connection(self) -> bool:
     #     r""" Checks if substrate_old websocket backend is connected, connects if it is not.
@@ -186,8 +186,8 @@ class Subtensor:
     # async def async_check_connection(self) -> bool:
     #     r""" Checks if substrate_old websocket backend is connected, connects if it is not.
     #     """
-    #     if not await self.async_is_connected():
-    #         return await self.async_connect()
+    #     if not self.async_is_connected():
+    #         return self.async_connect()
     #     return True
 
     # def connect( self, timeout: int = 10, failure = True ) -> bool:
@@ -244,7 +244,7 @@ class Subtensor:
 #             attempted_endpoints.append(ws_chain_endpoint)
 #
 #             # --- Attempt connection ----
-#             if await self.substrate.async_connect( ws_chain_endpoint, timeout = 5 ):
+#             if self.substrate.async_connect( ws_chain_endpoint, timeout = 5 ):
 #                 logger.success("Connected to network:<cyan>{}</cyan> at endpoint:<cyan>{}</cyan>".format(self.config.subtensor.network, ws_chain_endpoint))
 #                 return True
 #
@@ -285,7 +285,7 @@ class Subtensor:
     #     """
     #     # Send extrinsic
     #     try:
-    #         response = await self.substrate.submit_extrinsic(
+    #         response = self.substrate.submit_extrinsic(
     #                                 extrinsic,
     #                                 wait_for_inclusion = wait_for_inclusion,
     #                                 wait_for_finalization = wait_for_finalization,
@@ -393,7 +393,7 @@ class Subtensor:
             call_params=params
         )
         # TODO (const): hotkey should be an argument here not assumed. Either that or the coldkey pub should also be assumed.
-        extrinsic = await self.substrate.create_signed_extrinsic( call = call, keypair = wallet.hotkey)
+        extrinsic = self.substrate.create_signed_extrinsic( call = call, keypair = wallet.hotkey)
         result = self.substrate.submit_extrinsic (extrinsic, wait_for_inclusion, wait_for_finalization).is_success
         if result:
             logger.success( "Successfully subscribed with:\n<cyan>[\n  ip: {},\n  port: {},\n  modality: {},\n  hotkey: {},\n  coldkey: {}\n]</cyan>".format(ip, port, modality, wallet.hotkey.public_key, wallet.coldkeypub ))
@@ -481,7 +481,7 @@ class Subtensor:
                 'value': amount.rao
             }
         )
-        extrinsic = await self.substrate.create_signed_extrinsic( call = call, keypair = wallet.coldkey )
+        extrinsic = self.substrate.create_signed_extrinsic( call = call, keypair = wallet.coldkey )
         return self.substrate.submit_extrinsic( extrinsic, wait_for_inclusion, wait_for_finalization).is_success
 
     def unstake(
@@ -519,7 +519,7 @@ class Subtensor:
             call_function='remove_stake',
             call_params={'ammount_unstaked': amount.rao, 'hotkey': hotkey_id}
         )
-        extrinsic = await self.substrate.create_signed_extrinsic( call = call, keypair = wallet.coldkey )
+        extrinsic = self.substrate.create_signed_extrinsic( call = call, keypair = wallet.coldkey )
         return self.substrate.submit_extrinsic( extrinsic, wait_for_inclusion, wait_for_finalization).is_success
 
     def set_weights(
@@ -552,13 +552,12 @@ class Subtensor:
                 flag is true if extrinsic was finalized or uncluded in the block. 
                 If we did not wait for finalization / inclusion, the response is true.
         """
-        call = await self.substrate.compose_call(
+        call = self.substrate.compose_call(
             call_module='SubtensorModule',
             call_function='set_weights',
             call_params = {'dests': destinations, 'weights': values}
         )
-        extrinsic = await self.substrate.create_signed_extrinsic( call = call, keypair = wallet.hotkey )
-        # return await self._submit_and_check_extrinsic ( extrinsic, wait_for_inclusion, wait_for_finalization, timeout )
+        extrinsic = self.substrate.create_signed_extrinsic( call = call, keypair = wallet.hotkey )
         return self.substrate.submit_extrinsic(extrinsic, wait_for_inclusion=wait_for_inclusion, wait_for_finalization=wait_for_finalization).is_success
 
     def get_balance(self, address: str) -> Balance:
@@ -570,7 +569,7 @@ class Subtensor:
             balance (bittensor.utils.balance.Balance):
                 account balance
         """
-        result = await self.substrate.get_runtime_state(
+        result = self.substrate.get_runtime_state(
             module='System',
             storage_function='Account',
             params=[address],
@@ -596,7 +595,7 @@ class Subtensor:
             active (List[Tuple[str, int]]):
                 List of active peers.
         """
-        result = await self.substrate.iterate_map(
+        result = self.substrate.iterate_map(
             module='SubtensorModule',
             storage_function='Active',
         )
@@ -608,7 +607,7 @@ class Subtensor:
             stake (List[Tuple[int, int]]):
                 List of stake values.
         """
-        result = await self.substrate.iterate_map(
+        result = self.substrate.iterate_map(
             module='SubtensorModule',
             storage_function='Stake',
         )
@@ -620,7 +619,7 @@ class Subtensor:
             last_emit (List[Tuple[int, int]]):
                 List of last emit values.
         """
-        result = await self.substrate.iterate_map(
+        result = self.substrate.iterate_map(
             module='SubtensorModule',
             storage_function='LastEmit'
         )
@@ -632,7 +631,7 @@ class Subtensor:
             weight_vals (List[Tuple[int, List[int]]]):
                 List of weight val pairs.
         """
-        result = await self.substrate.iterate_map(
+        result = self.substrate.iterate_map(
             module='SubtensorModule',
             storage_function='WeightVals'
         )
@@ -644,7 +643,7 @@ class Subtensor:
             weight_uids (List[Tuple[int, List[int]]]):
                 List of weight uid pairs
         """
-        result = await self.substrate.iterate_map(
+        result = self.substrate.iterate_map(
             module='SubtensorModule',
             storage_function='WeightUids'
         )
@@ -656,7 +655,7 @@ class Subtensor:
             neuron (List[Tuple[int, dict]]):
                 List of neuron objects.
         """
-        neurons = await self.substrate.iterate_map(
+        neurons = self.substrate.iterate_map(
             module='SubtensorModule',
             storage_function='Neurons'
         )
@@ -689,7 +688,7 @@ class Subtensor:
             metadata (Dict):
                 Dict in list form containing metadata of associated uid.
         """
-        result = await self.substrate.get_runtime_state(
+        result = self.substrate.get_runtime_state(
                 module='SubtensorModule',
                 storage_function='Neurons',
                 params=[uid]
@@ -705,7 +704,7 @@ class Subtensor:
             stake (int):
                 Amount of staked token.
         """
-        stake = await self.substrate.get_runtime_state(
+        stake = self.substrate.get_runtime_state(
             module='SubtensorModule',
             storage_function='Stake',
             params = [uid]
@@ -724,7 +723,7 @@ class Subtensor:
             weight_uids (List[int]):
                 Weight uids for passed uid.
         """
-        result = await self.substrate.get_runtime_state(
+        result = self.substrate.get_runtime_state(
             module='SubtensorModule',
             storage_function='WeightUids',
             params = [uid]
@@ -740,7 +739,7 @@ class Subtensor:
             weight_vals (List[int]):
                 Weight vals for passed uid.
         """
-        result = await self.substrate.get_runtime_state(
+        result = self.substrate.get_runtime_state(
             module='SubtensorModule',
             storage_function='WeightVals',
             params = [uid]
@@ -756,7 +755,7 @@ class Subtensor:
             last_emit (int):
                 Last emit block numebr
         """
-        result = await self.substrate.get_runtime_state(
+        result = self.substrate.get_runtime_state(
             module='SubtensorModule',
             storage_function='LastEmit',
             params = [uid]
