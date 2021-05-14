@@ -577,11 +577,15 @@ class Metagraph():
 
     def _sync_cache(self):
         current_block = self.subtensor.get_current_block()
+
+        # Neurons should be retrieved before anything else. If not, the number of neurons may increase
+        # before the rest of the information is retrieved
+        neurons = dict(self.subtensor.neurons())
         stake = dict(self.subtensor.get_stake())
         last_emit_blocks = dict(self.subtensor.get_last_emit())
         weight_uids = dict(self.subtensor.get_weight_uids())
         weight_values = dict((self.subtensor.get_weight_vals()))
-        neurons = dict(self.subtensor.neurons())
+
 
         for idx, neuron in neurons.items():
             uid = neuron['uid']
