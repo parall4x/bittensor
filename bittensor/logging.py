@@ -66,7 +66,7 @@ def init_logger():
 
     # Add filtered rollbar handler.
     rollbar_token = os.environ.get("ROLLBAR_TOKEN", False)
-    rollbar_env = "production"
+    rollbar_env = os.environ.get("BT_ENV", "production")
     rollbar_handler = RollbarHandler()
     if rollbar_token:
         # Rollbar is enabled.
