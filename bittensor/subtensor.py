@@ -599,8 +599,8 @@ class Subtensor:
         """
         return self.substrate.get_block_number(None)
 
-    def get_block_hash(self):
-        return self.substrate.get_block_hash(None)
+    def get_block_hash(self, block_nr):
+        return self.substrate.get_block_hash(block_nr)
 
     def get_active(self) -> List[Tuple[str, int]]:
         r""" Returns a list of (public key, uid) pairs one for each active peer on chain.

@@ -577,7 +577,7 @@ class Metagraph():
 
     def _sync_cache(self):
         current_block = self.subtensor.get_current_block()
-        hash = self.subtensor.get_block_hash()
+        hash = self.subtensor.get_block_hash(current_block)
 
         # Neurons should be retrieved before anything else. If not, the number of neurons may increase
         # before the rest of the information is retrieved
