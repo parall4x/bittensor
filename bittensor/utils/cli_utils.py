@@ -25,7 +25,7 @@ import getpass
 
 from loguru import logger
 
-from substrateinterface import Keypair
+from bittensor.crypto import DictKeyPair as Keypair
 from bittensor.crypto.keyfiles import load_keypair_from_data, KeyFileError
 from termcolor import colored
 from bittensor.crypto import encrypt, is_encrypted, decrypt_data, KeyError

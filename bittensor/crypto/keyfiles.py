@@ -1,4 +1,4 @@
-from substrateinterface import Keypair
+from bittensor.crypto import DictKeyPair as Keypair
 import json
 from loguru import logger
 

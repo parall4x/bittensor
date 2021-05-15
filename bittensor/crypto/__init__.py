@@ -6,8 +6,25 @@ from cryptography.hazmat.primitives.kdf.pbkdf2 import PBKDF2HMAC
 from loguru import logger
 import base64
 
+from substrateinterface import Keypair
+
+
 class KeyError(Exception):
     pass
+
+class DictKeyPair(Keypair):
+    def toDict(self):
+        return {
+            'accountId': self.public_key,
+            'publicKey': self.public_key,
+            'secretPhrase': self.mnemonic,
+            'secretSeed': "0x" + self.seed_hex,
+            'ss58Address': self.ss58_address
+        }
+
+
+
+
 
 __SALT = b"Iguesscyborgslikemyselfhaveatendencytobeparanoidaboutourorigins"
 

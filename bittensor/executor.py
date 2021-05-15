@@ -183,7 +183,7 @@ class Executor ( bittensor.neuron.Neuron ):
         """
         self.wallet.assert_coldkey()
         self.wallet.assert_coldkeypub()
-        self.subtensor.connect()
+
         staking_balance = Balance.from_float( amount_tao )
         account_balance = self.subtensor.get_balance( self.wallet.coldkey.ss58_address )
         if account_balance < staking_balance:
@@ -216,7 +216,7 @@ class Executor ( bittensor.neuron.Neuron ):
         """
         self.wallet.assert_coldkey()
         self.wallet.assert_coldkeypub()
-        self.subtensor.connect()
+
         transfer_balance = Balance.from_float( amount_tao )
         acount_balance = self.subtensor.get_balance(self.wallet.coldkey.ss58_address)
         if acount_balance < transfer_balance:
