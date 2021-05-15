@@ -80,8 +80,8 @@ class Subtensor:
         Subtensor.check_config(config)
         self.config = copy.deepcopy(config)
 
-        chain_endpoint = "ws://subtensor.rawatech.com:9944" if not chain_endpoint else "ws://" + chain_endpoint
-
+        # chain_endpoint = "ws://subtensor.rawatech.com:9944" if not chain_endpoint else "ws://" + chain_endpoint
+        chain_endpoint = "ws://feynman.kusanagi.bittensor.com:9944" if not chain_endpoint else "ws://" + chain_endpoint
         self.substrate = SubstrateInterface(
             ss58_format=42,
             type_registry_preset='substrate-node-template',
@@ -600,7 +600,7 @@ class Subtensor:
         return self.substrate.get_block_number(None)
 
     def get_block_hash(self):
-        return self.substrate.get_block_hash()
+        return self.substrate.get_block_hash(None)
 
     def get_active(self) -> List[Tuple[str, int]]:
         r""" Returns a list of (public key, uid) pairs one for each active peer on chain.
@@ -614,7 +614,7 @@ class Subtensor:
         )
         return result
 
-    def get_stake(self) -> List[Tuple[int, int]]:
+    def get_stake(self, hash=None) -> List[Tuple[int, int]]:
         r""" Returns a list of (uid, stake) pairs one for each active peer on chain.
         Returns:
             stake (List[Tuple[int, int]]):
@@ -623,10 +623,11 @@ class Subtensor:
         result = self.substrate.iterate_map(
             module='SubtensorModule',
             storage_function='Stake',
+            block_hash=hash
         )
         return result
 
-    def get_last_emit(self) -> List[Tuple[int, int]]:
+    def get_last_emit(self, hash=None) -> List[Tuple[int, int]]:
         r""" Returns a list of (uid, last emit) pairs for each active peer on chain.
         Returns:
             last_emit (List[Tuple[int, int]]):
@@ -634,11 +635,12 @@ class Subtensor:
         """
         result = self.substrate.iterate_map(
             module='SubtensorModule',
-            storage_function='LastEmit'
+            storage_function='LastEmit',
+            block_hash=hash
         )
         return result
 
-    def get_weight_vals(self) -> List[Tuple[int, List[int]]]:
+    def get_weight_vals(self, hash=None) -> List[Tuple[int, List[int]]]:
         r""" Returns a list of (uid, weight vals) pairs for each active peer on chain.
         Returns:
             weight_vals (List[Tuple[int, List[int]]]):
@@ -646,11 +648,12 @@ class Subtensor:
         """
         result = self.substrate.iterate_map(
             module='SubtensorModule',
-            storage_function='WeightVals'
+            storage_function='WeightVals',
+            block_hash=hash
         )
         return result
 
-    def get_weight_uids(self) -> List[Tuple[int, int]]:
+    def get_weight_uids(self, hash=None) -> List[Tuple[int, int]]:
         r""" Returns a list of (uid, weight uids) pairs for each active peer on chain.
         Returns:
             weight_uids (List[Tuple[int, List[int]]]):
@@ -658,11 +661,12 @@ class Subtensor:
         """
         result = self.substrate.iterate_map(
             module='SubtensorModule',
-            storage_function='WeightUids'
+            storage_function='WeightUids',
+            block_hash=hash
         )
         return result
 
-    def neurons(self) -> List[Tuple[int, dict]]:
+    def neurons(self, hash=None) -> List[Tuple[int, dict]]:
         r""" Returns a list of neuron from the chain. 
         Returns:
             neuron (List[Tuple[int, dict]]):
@@ -670,7 +674,8 @@ class Subtensor:
         """
         neurons = self.substrate.iterate_map(
             module='SubtensorModule',
-            storage_function='Neurons'
+            storage_function='Neurons',
+            block_hash=hash
         )
         return neurons
 
