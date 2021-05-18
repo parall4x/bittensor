@@ -35,6 +35,7 @@ import bittensor.config as config_utils
 import bittensor.utils.networking as net
 # from bittensor.subtensor import Subtensor
 # from bittensor.crypto.keyfiles import KeyFileError
+from bittensor.subtensor import create_subtensor
 
 MAX_INT_WEIGHT = 4294967295 # Max weight value on chain.
 
@@ -217,7 +218,7 @@ class Metagraph():
         self.wallet = wallet
 
         if subtensor == None:
-            subtensor = bittensor.subtensor.Subtensor( self.config )
+            subtensor = create_subtensor(config)
         self.subtensor = subtensor
 
         # Chain state as cache and torch object.
@@ -230,9 +231,9 @@ class Metagraph():
     @staticmethod
     def default_config() -> Munch:
         # Parses and returns a config Munch for this object.
-        parser = argparse.ArgumentParser(); 
+        parser = argparse.ArgumentParser()
         Metagraph.add_args(parser) 
-        config = config_utils.Config.to_config(parser); 
+        config = config_utils.Config.to_config(parser)
         return config
 
     @staticmethod   

@@ -15,28 +15,27 @@
 # OF CONTRACT, TORT OR OTHERWISE, ARISING FROM, OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER 
 # DEALINGS IN THE SOFTWARE.
 import argparse
-import asyncio
-import random
-import time
-import copy
 
 from munch import Munch
 from typing import List, Tuple, Optional
 
-from scalecodec import U64
-from substrateinterface.utils.ss58 import ss58_decode
-from termcolor import colored
-
 import bittensor
 import bittensor.utils.networking as net
 from substrateinterface import SubstrateInterface
-from bittensor.substrate_old.exceptions import SubstrateRequestException
-from bittensor.utils.neurons import Neuron, Neurons
+
+from bittensor.factories.subtensor import SubtensorClientFactory, SubtensorInterfaceFactory, SubtensorEndpointFactory
 from bittensor.utils.balance import Balance
 
 from loguru import logger
 
 logger = logger.opt(colors=True)
+
+
+
+
+
+
+
 
 
 class Subtensor:
@@ -54,40 +53,31 @@ class Subtensor:
         }
     }
 
-    def __init__(
-            self,
-            config: 'Munch' = None,
-            network: str = None,
-            chain_endpoint: str = None
-    ):
-        r""" Initializes a subtensor chain interface.
-            Args:
-                config (:obj:`Munch`, `optional`): 
-                    metagraph.Metagraph.config()
-                network (default='akira', type=str)
-                    The subtensor network flag. The likely choices are:
-                            -- akira (testing network)
-                            -- kusanagi (main network)
-                    If this option is set it overloads subtensor.chain_endpoint with 
-                    an entry point node from that network.
-                chain_endpoint (default=None, type=str)
-                    The subtensor endpoint flag. If set, overrides the --network flag.
-        """
-        if config == None:
-            config = Subtensor.default_config()
-        config.subtensor.network = network if network != None else config.subtensor.network
-        config.subtensor.chain_endpoint = chain_endpoint if chain_endpoint != None else config.subtensor.chain_endpoint
-        Subtensor.check_config(config)
-        self.config = copy.deepcopy(config)
+    @staticmethod
+    def create(config: 'Munch' = None, network=None, endpoint=None):
+        subtensorFactory = SubtensorClientFactory(interface_factory=SubtensorInterfaceFactory(SubtensorEndpointFactory()))
 
-        chain_endpoint = "ws://subtensor.rawatech.com:9944" if not chain_endpoint else "ws://" + chain_endpoint
-        # chain_endpoint = "ws://feynman.kusanagi.bittensor.com:9944" if not chain_endpoint else "ws://" + chain_endpoint
-        self.substrate = SubstrateInterface(
-            ss58_format=42,
-            type_registry_preset='substrate-node-template',
-            type_registry=self.custom_type_registry,
-            url=chain_endpoint
-        )
+        if config:
+            return subtensorFactory.create_by_config(config)
+        elif network:
+            return subtensorFactory.create_by_network(network)
+        elif endpoint:
+            return subtensorFactory.create_by_endpoint(endpoint)
+        else:
+            return subtensorFactory.create_default()
+
+    @staticmethod
+    def add_args(parser: argparse.ArgumentParser):
+        parser.add_argument('--subtensor.network', default='kusanagi', type=str,
+                            help='''The subtensor network flag. The likely choices are:
+                                    -- akira (testing network)
+                                    -- kusanagi (main network)
+                                If this option is set it overloads subtensor.chain_endpoint with 
+                                an entry point node from that network.
+                                ''')
+        parser.add_argument('--subtensor.chain_endpoint', default=None, type=str,
+                            help='''The subtensor endpoint flag. If set, overrides the --network flag.
+                                ''')
 
     @staticmethod
     def default_config() -> Munch:
@@ -97,230 +87,13 @@ class Subtensor:
         config = bittensor.config.Config.to_config(parser)
         return config
 
-    @staticmethod
-    def add_args(parser: argparse.ArgumentParser):
-        try:
-            parser.add_argument('--subtensor.network', default='kusanagi', type=str,
-                                help='''The subtensor network flag. The likely choices are:
-                                        -- akira (testing network)
-                                        -- kusanagi (main network)
-                                    If this option is set it overloads subtensor.chain_endpoint with 
-                                    an entry point node from that network.
-                                    ''')
-            parser.add_argument('--subtensor.chain_endpoint', default=None, type=str,
-                                help='''The subtensor endpoint flag. If set, overrides the --network flag.
-                                    ''')
-        except:
-            pass
 
-    @staticmethod
-    def check_config(config: Munch):
-        pass
 
-    def endpoint_for_network(self, blacklist: List[str] = []) -> str:
-        r""" Returns a chain endpoint based on config.subtensor.network.
-            Returns None if there are no available endpoints.
-        Raises:
-            endpoint (str):
-                Websocket endpoint or None if there are none available.
-        """
 
-        # Chain endpoint overrides the --network flag.
-        if self.config.subtensor.chain_endpoint != None:
-            if self.config.subtensor.chain_endpoint in blacklist:
-                return None
-            else:
-                return self.config.subtensor.chain_endpoint
 
-        # Else defaults to networks.
-        # TODO(const): this should probably make a DNS lookup.
-        if self.config.subtensor.network == "akira":
-            akira_available = [item for item in bittensor.__akira_entrypoints__ if item not in blacklist]
-            if len(akira_available) == 0:
-                return None
-            return random.choice(akira_available)
+    def __init__(self, interface : 'SubstrateInterface'):
+        self.substrate = interface
 
-        elif self.config.subtensor.network == "boltzmann":
-            boltzmann_available = [item for item in bittensor.__boltzmann_entrypoints__ if item not in blacklist]
-            if len(boltzmann_available) == 0:
-                return None
-            return random.choice(boltzmann_available)
-
-        elif self.config.subtensor.network == "kusanagi":
-            kusanagi_available = [item for item in bittensor.__kusanagi_entrypoints__ if item not in blacklist]
-            if len(kusanagi_available) == 0:
-                return None
-            return random.choice(kusanagi_available)
-
-        elif self.config.subtensor.network == "local":
-            local_available = [item for item in bittensor.__local_entrypoints__ if item not in blacklist]
-            if len(local_available) == 0:
-                return None
-            return random.choice(local_available)
-
-        else:
-            akira_available = [item for item in bittensor.__akira_entrypoints__ if item not in blacklist]
-            if len(akira_available) == 0:
-                return None
-            return random.choice(akira_available)
-
-    # def is_connected(self) -> bool:
-    #     r""" Returns true if the connection state as a boolean.
-    #     Raises:
-    #         success (bool):
-    #             True is the websocket is connected to the chain endpoint.
-    #     """
-    #     loop = asyncio.get_event_loop()
-    #     loop.set_debug(enabled=True)
-    #     return loop.run_until_complete(self.async_is_connected())
-
-    # async def async_is_connected(self) -> bool:
-    #     r""" Returns the connection state as a boolean.
-    #     Raises:
-    #         success (bool):
-    #             True is the websocket is connected to the chain endpoint.
-    #     """
-    #     return self.substrate.async_is_connected()
-
-    # def check_connection(self) -> bool:
-    #     r""" Checks if substrate_old websocket backend is connected, connects if it is not.
-    #     """
-    #     loop = asyncio.get_event_loop()
-    #     loop.set_debug(enabled=True)
-    #     return loop.run_until_complete(self.async_check_connection())
-
-    # async def async_check_connection(self) -> bool:
-    #     r""" Checks if substrate_old websocket backend is connected, connects if it is not.
-    #     """
-    #     if not self.async_is_connected():
-    #         return self.async_connect()
-    #     return True
-
-    # def connect( self, timeout: int = 10, failure = True ) -> bool:
-    #     r""" Attempts to connect the substrate_old interface backend.
-    #     If the connection fails, attemps another endpoint until a timeout.
-    #     Args:
-    #         timeout (int):
-    #             Time to wait before subscription times out.
-    #         failure (bool):
-    #             This connection attempt raises an error an a failed attempt.
-    #     Returns:
-    #         success (bool):
-    #             True on success.
-    #     """
-    #     loop = asyncio.get_event_loop()
-    #     loop.set_debug(enabled=True)
-    #     return loop.run_until_complete(self.async_connect(timeout, failure))
-
-    #     async def async_connect( self, timeout: int = 10, failure = True ) -> bool:
-    #         r""" Attempts to connect the substrate_old interface backend.
-    #         If the connection fails, attemps another endpoint until a timeout.
-    #         Args:
-    #             timeout (int):
-    #                 Time to wait before subscription times out.
-    #             failure (bool):
-    #                 This connection attempt raises an error an a failed attempt.
-    #         Returns:
-    #             success (bool):
-    #                 True on success.
-    #         """
-    #         start_time = time.time()
-    #         attempted_endpoints = []
-    #         while True:
-    #             def connection_error_message():
-    #                 print('''
-    # Check that your internet connection is working and the chain endpoints are available: <cyan>{}</cyan>
-    # The subtensor.network should likely be one of the following choices:
-    #     -- local - (your locally running node)
-    #     -- akira - (testnet)
-    #     -- kusanagi - (mainnet)
-    # Or you may set the endpoint manually using the --subtensor.chain_endpoint flag
-    # To run a local node (See: docs/running_a_validator.md) \n
-    #                               '''.format( attempted_endpoints) )
-    #
-    #             # ---- Get next endpoint ----
-    #             ws_chain_endpoint = self.endpoint_for_network( blacklist = attempted_endpoints )
-    #             if ws_chain_endpoint == None:
-    #                 logger.error("No more endpoints available for subtensor.network: <cyan>{}</cyan>, attempted: <cyan>{}</cyan>".format(self.config.subtensor.network, attempted_endpoints))
-    #                 connection_error_message()
-    #                 if failure:
-    #                     logger.critical('Unable to connect to network:<cyan>{}</cyan>.\nMake sure your internet connection is stable and the network is properly set.'.format(self.config.subtensor.network))
-    #                 else:
-    #                     return False
-    #             attempted_endpoints.append(ws_chain_endpoint)
-    #
-    #             # --- Attempt connection ----
-    #             if self.substrate.async_connect( ws_chain_endpoint, timeout = 5 ):
-    #                 logger.success("Connected to network:<cyan>{}</cyan> at endpoint:<cyan>{}</cyan>".format(self.config.subtensor.network, ws_chain_endpoint))
-    #                 return True
-    #
-    #             # ---- Timeout ----
-    #             elif (time.time() - start_time) > timeout:
-    #                 logger.error( "Error while connecting to network:<cyan>{}</cyan> at endpoint: <cyan>{}</cyan>".format(self.config.subtensor.network, ws_chain_endpoint))
-    #                 connection_error_message()
-    #                 if failure:
-    #                     raise RuntimeError('Unable to connect to network:<cyan>{}</cyan>.\nMake sure your internet connection is stable and the network is properly set.'.format(self.config.subtensor.network))
-    #                 else:
-    #                     return False
-
-    # async def _submit_and_check_extrinsic(
-    #         self,
-    #         extrinsic,
-    #         wait_for_inclusion:bool = False,
-    #         wait_for_finalization: bool = False,
-    #         timeout: int = bittensor.__blocktime__ * 3
-    #     ) -> bool:
-    #     r""" Makes an extrinsic call to the chain, returns true if the extrinsic send was a success.
-    #     If wait_for_inclusion or wait_for_finalization are true, the call will return true iff the
-    #     extrinsic enters or finalizes in a block.
-    #     Args:
-    #         extrinsic (substrate_old extrinsic):
-    #             Extrinsic to send to the chain.
-    #         wait_for_inclusion (bool):
-    #             If set, waits for the extrinsic to enter a block before returning true,
-    #             or returns false if the extrinsic fails to enter the block within the timeout.
-    #         wait_for_finalization (bool):
-    #             If set, waits for the extrinsic to be finalized on the chain before returning true,
-    #             or returns false if the extrinsic fails to be finalized within the timeout.
-    #         timeout (int):
-    #             Time that this call waits for either finalization of inclusion.
-    #     Returns:
-    #         success (bool):
-    #             flag is true if extrinsic was finalized or uncluded in the block.
-    #             If we did not wait for finalization / inclusion, the response is true.
-    #     """
-    #     # Send extrinsic
-    #     try:
-    #         response = self.substrate.submit_extrinsic(
-    #                                 extrinsic,
-    #                                 wait_for_inclusion = wait_for_inclusion,
-    #                                 wait_for_finalization = wait_for_finalization,
-    #                                 timeout = timeout
-    #                         )
-    #     except SubstrateRequestException as e:
-    #         logger.error('Extrinsic exception with error {}', e)
-    #         return False
-    #     except Exception as e:
-    #         logger.error('Error submitting extrinsic with error {}', e)
-    #         return False
-    #
-    #     # Check timeout.
-    #     if response == None:
-    #         logger.error('Error in extrinsic: No response within timeout')
-    #         return False
-    #
-    #     # Check result.
-    #     if not wait_for_inclusion and not wait_for_finalization:
-    #         return True
-    #     else:
-    #         if 'error' in response:
-    #             logger.error('Error in extrinsic: {}', response['error'])
-    #         elif 'finalized' in response and response['finalized'] == True:
-    #             return True
-    #         elif 'inBlock' in response and response['inBlock'] == True:
-    #             return True
-    #         else:
-    #             return False
 
     def is_subscribed(self, wallet: 'bittensor.wallet.Wallet', ip: str, port: int, modality: int) -> bool:
         r""" Returns true if the bittensor endpoint is already subscribed with the wallet and metadata.

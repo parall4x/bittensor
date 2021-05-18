@@ -26,6 +26,9 @@ from munch import Munch
 import bittensor
 
 from loguru import logger
+
+from bittensor.subtensor import create_subtensor
+
 logger = logger.opt(colors=True)
 
 class FailedConnectToChain(Exception):
@@ -85,7 +88,7 @@ class Neuron:
         self.wallet = wallet
         # Subtensor: provides an interface to the subtensor chain given a wallet.
         if subtensor == None:
-            subtensor = bittensor.subtensor.Subtensor( self.config )
+            subtensor = create_subtensor( self.config )
         self.subtensor = subtensor
         # Metagraph: Maintains a connection to the subtensor chain and hold chain state.
         if metagraph == None:

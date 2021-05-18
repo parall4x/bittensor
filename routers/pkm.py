@@ -55,7 +55,7 @@ class PKMRouter():
     def default_config() -> Munch:
         parser = argparse.ArgumentParser()
         PKMRouter.add_args(parser) 
-        config = bittensor.config.Config.to_config(parser); 
+        config = bittensor.config.Config.to_config(parser)
         PKMRouter.check_config(config)
         return config
 
