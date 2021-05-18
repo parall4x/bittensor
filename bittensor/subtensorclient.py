@@ -44,7 +44,7 @@ def create(config: 'Munch' = None, network=None, endpoint=None):
         return subtensor_factory.create_default()
 
 
-class Subtensor:
+class SubtensorClient:
     """
     Handles interactions with the subtensor chain.
     """
@@ -77,7 +77,7 @@ class Subtensor:
     def default_config() -> Munch:
         # Parses and returns a config Munch for this object.
         parser = argparse.ArgumentParser()
-        Subtensor.add_args(parser)
+        SubtensorClient.add_args(parser)
         config = bittensor.config.Config.to_config(parser)
         return config
 
@@ -698,8 +698,8 @@ class SubtensorClientFactory:
         return self.__build_client(interface)
 
     def create_default(self):
-        config = Subtensor.default_config()
+        config = SubtensorClient.default_config()
         return self.create_by_config(config)
 
     def __build_client(self, interface : 'SubstrateInterface'):
-        return Subtensor(interface)
+        return SubtensorClient(interface)

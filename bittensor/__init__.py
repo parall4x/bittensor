@@ -44,7 +44,7 @@ import bittensor.metagraph
 import bittensor.logging
 import bittensor.nucleus
 import bittensor.receptor
-import bittensor.subtensor
+import bittensor.subtensorclient
 import bittensor.synapse
 import bittensor.wallet
 

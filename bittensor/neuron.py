@@ -27,7 +27,7 @@ import bittensor
 
 from loguru import logger
 
-from bittensor.subtensor import create as create_subtensor
+from bittensor.subtensorclient import create as create_subtensor
 
 logger = logger.opt(colors=True)
 
@@ -44,16 +44,16 @@ class FailedToPollChain(Exception):
     pass
 
 class Neuron:
-    def __init__(self, 
-                config: Munch = None, 
-                wallet: 'bittensor.wallet.Wallet' = None, 
-                subtensor: 'bittensor.subtensor.Subtensor' = None,
-                metagraph: 'bittensor.metagraph.Metagraph' = None,
-                nucleus: 'bittensor.nucleus.Nucleus' = None,
-                axon: 'bittensor.axon.Axon' = None,
-                dendrite: 'bittensor.dendrite.Dendrite' = None,
-                **kwargs,
-            ):
+    def __init__(self,
+                 config: Munch = None,
+                 wallet: 'bittensor.wallet.Wallet' = None,
+                 subtensor: 'bittensor.subtensor.SubtensorClient' = None,
+                 metagraph: 'bittensor.metagraph.Metagraph' = None,
+                 nucleus: 'bittensor.nucleus.Nucleus' = None,
+                 axon: 'bittensor.axon.Axon' = None,
+                 dendrite: 'bittensor.dendrite.Dendrite' = None,
+                 **kwargs,
+                 ):
         r""" Initializes a new full Neuron object.
             
             Args:

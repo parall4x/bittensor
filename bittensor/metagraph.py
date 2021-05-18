@@ -33,7 +33,7 @@ from typing import List, Tuple, List
 import bittensor
 import bittensor.config as config_utils
 import bittensor.utils.networking as net
-from bittensor.subtensor import create as create_subtensor
+from bittensor.subtensorclient import create as create_subtensor
 
 MAX_INT_WEIGHT = 4294967295 # Max weight value on chain.
 
@@ -190,7 +190,7 @@ class Metagraph():
             self, 
             config: 'Munch' = None, 
             wallet: 'bittensor.wallet.Wallet' = None,
-            subtensor: 'bittensor.subtensor.Subtensor' = None,
+            subtensor: 'bittensor.subtensor.SubtensorClient' = None,
             **kwargs,
         ):
         r""" Initializes a new Metagraph chain interface.
@@ -237,7 +237,7 @@ class Metagraph():
     @staticmethod   
     def add_args(parser: argparse.ArgumentParser):
         bittensor.wallet.Wallet.add_args( parser )
-        bittensor.subtensor.Subtensor.add_args( parser )
+        bittensor.subtensorclient.SubtensorClient.add_args(parser)
         try:
             parser.add_argument('--metagraph.stale_emit_filter', default=-1, type=int, 
                                 help='''Filter neurons who have not emitted in this number of blocks.

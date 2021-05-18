@@ -3,20 +3,20 @@ import pytest
 from munch import Munch
 
 def test_create():
-    subtensor = bittensor.subtensor.Subtensor()
+    subtensor = bittensor.subtensorclient.SubtensorClient()
 
 def test_defaults_to_akira( ):
-    subtensor = bittensor.subtensor.Subtensor()
+    subtensor = bittensor.subtensorclient.SubtensorClient()
     assert subtensor.endpoint_for_network() in bittensor.__kusanagi_entrypoints__
 
 def test_endpoint_overides():
-    subtensor = bittensor.subtensor.Subtensor(
+    subtensor = bittensor.subtensorclient.SubtensorClient(
         chain_endpoint = "this is the endpoint"
     )
     assert subtensor.endpoint_for_network() == "this is the endpoint"
 
 def test_networks():
-    subtensor = bittensor.subtensor.Subtensor()
+    subtensor = bittensor.subtensorclient.SubtensorClient()
     subtensor.config.subtensor.network = 'akira'
     assert subtensor.endpoint_for_network()  in bittensor.__akira_entrypoints__
     subtensor.config.subtensor.network = 'boltzmann'

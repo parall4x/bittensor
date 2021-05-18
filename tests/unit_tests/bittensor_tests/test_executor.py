@@ -8,7 +8,7 @@ wallet = bittensor.wallet.Wallet (
     name = 'pytest',
     hotkey = 'pytest',
 )
-subtensor = bittensor.subtensor.Subtensor (
+subtensor = bittensor.subtensorclient.SubtensorClient (
     network = 'boltzmann'
 )
 metagraph = bittensor.metagraph.Metagraph (
