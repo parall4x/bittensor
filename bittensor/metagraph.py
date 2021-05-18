@@ -33,9 +33,7 @@ from typing import List, Tuple, List
 import bittensor
 import bittensor.config as config_utils
 import bittensor.utils.networking as net
-# from bittensor.subtensor import Subtensor
-# from bittensor.crypto.keyfiles import KeyFileError
-from bittensor.subtensor import create_subtensor
+from bittensor.subtensor import create as create_subtensor
 
 MAX_INT_WEIGHT = 4294967295 # Max weight value on chain.
 

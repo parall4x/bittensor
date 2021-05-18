@@ -27,7 +27,7 @@ import bittensor
 
 from loguru import logger
 
-from bittensor.subtensor import create_subtensor
+from bittensor.subtensor import create as create_subtensor
 
 logger = logger.opt(colors=True)
 
@@ -118,7 +118,7 @@ class Neuron:
     @staticmethod   
     def add_args(parser: argparse.ArgumentParser):
         bittensor.wallet.Wallet.add_args( parser )
-        bittensor.subtensor.Subtensor.add_args( parser )
+        # bittensor.subtensor.Subtensor.add_args( parser )
         bittensor.metagraph.Metagraph.add_args( parser )
         bittensor.nucleus.Nucleus.add_args( parser )
         bittensor.axon.Axon.add_args(parser)
