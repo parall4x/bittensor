@@ -80,8 +80,8 @@ class Subtensor:
         Subtensor.check_config(config)
         self.config = copy.deepcopy(config)
 
-        chain_endpoint = "ws://subtensor.rawatech.com:9944" if not chain_endpoint else "ws://" + chain_endpoint
-        # chain_endpoint = "ws://feynman.kusanagi.bittensor.com:9944" if not chain_endpoint else "ws://" + chain_endpoint
+        # chain_endpoint = "ws://subtensor.rawatech.com:9944" if not chain_endpoint else "ws://" + chain_endpoint
+        chain_endpoint = "ws://feynman.kusanagi.bittensor.com:9944" if not chain_endpoint else "ws://" + chain_endpoint
         self.substrate = SubstrateInterface(
             ss58_format=42,
             type_registry_preset='substrate-node-template',

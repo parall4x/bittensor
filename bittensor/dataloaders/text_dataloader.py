@@ -142,15 +142,13 @@ class GenesisTextDataloader(BittensorDataLoader):
                 return DataLoader(self,
                             shuffle=True,
                             batch_size=self.batch_size,
-                            num_workers=self.config.dataloader.num_workers,
-                            collate_fn=self.collate_fn)
+                            num_workers=self.config.dataloader.num_workers)
 
 
             # Set up dataloader
             return DataLoader(subset,
                             batch_size=self.batch_size,
-                            num_workers=self.config.dataloader.num_workers,
-                            collate_fn=self.collate_fn)
+                            num_workers=self.config.dataloader.num_workers)
         
         # If epoch_length is not set or it is higher than the total size of the dataset,
         #  then just shuffle dataset and return the whole thing.
@@ -158,8 +156,7 @@ class GenesisTextDataloader(BittensorDataLoader):
         return DataLoader(self,
                             shuffle=True,
                             batch_size=self.batch_size,
-                            num_workers=self.config.dataloader.num_workers,
-                            collate_fn=self.collate_fn)
+                            num_workers=self.config.dataloader.num_workers)
 
     def __len__(self):
         """Returns length of dataset minus the block size
@@ -193,9 +190,4 @@ class GenesisTextDataloader(BittensorDataLoader):
             return None
 
         x = torch.tensor(dix, dtype=torch.long)
-        return x    
-
-    def collate_fn(self, batch):
-        batch = list(filter(lambda x: x is not None, batch))
-        return torch.utils.data.dataloader.default_collate(batch)
-    
+        return x
