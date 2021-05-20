@@ -35,8 +35,7 @@ def init():
     env = os.environ.get("BT_ENV", "production")
     logger.info("Error reporting enabled using {}:{}", token, env)
     rollbar.init(token, env)
-    set_runtime_status("OK")
-    
+
     loop = asyncio.get_event_loop()
     loop.set_exception_handler(asyncio_exception_handler)
 
@@ -46,10 +45,6 @@ def init():
 def is_enabled():
     return os.environ.get("ROLLBAR_TOKEN", False)
 
-def set_runtime_status(status):
-    file = Path('/tmp/bt_runstate')
-    with file.open("w") as file:
-        file.write("%s\n" % status)
 
 
 def asyncio_exception_handler(loop, context):
@@ -83,5 +78,3 @@ def send_exception(info = None, extra_data = None):
 
     logger.info("Sending exception to rollbar")
     rollbar.report_exc_info(exc_info=info, extra_data=extra_data)
-    set_runtime_status("ERR")
-
